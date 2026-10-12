@@ -18,14 +18,14 @@ public static class SizeTargeting
     }
 
     public static int TotalAudioKbps(MediaInfo media, EncodeRequest request) =>
-        request.IncludeAudio ? media.Audio.Sum(a => FfmpegArguments.AudioBitrateKbps(a, request)) : 0;
+        FfmpegArguments.KeptAudio(media, request).Sum(a => FfmpegArguments.AudioBitrateKbps(a, request));
 
     public static async Task<EncodeResult> EncodeToSizeAsync(FfmpegTools tools, EncodeRequest template, MediaInfo media, long maxBytes,
         int maxAttempts = 3, IProgress<EncodeProgress>? progress = null, Action<string>? log = null, CancellationToken ct = default)
     {
         // Always re-encode audio here so its bitrate is known rather than whatever the source used.
         var request = template with { AudioBitrateKbps = template.AudioBitrateKbps ?? 128 };
-        int kbps = CalculateVideoBitrateKbps(maxBytes, media.Duration, TotalAudioKbps(media, request));
+        int kbps = CalculateVideoBitrateKbps(maxBytes, request.OutputDuration(media), TotalAudioKbps(media, request));
         for (int attempt = 1; ; attempt++)
         {
             if (kbps < MinVideoKbps)

@@ -29,20 +29,43 @@ public static class FfmpegArguments
         if (media.ExtraVideoStreams > 0) w.Add($"{media.ExtraVideoStreams} extra video stream(s)/cover image(s) were not included; only the main video was encoded.");
         if (media.DataStreams > 0) w.Add($"{media.DataStreams} data stream(s) (e.g. timecode or sensor data) were not included.");
         if (request.IncludeAudio)
-            foreach (var a in media.Audio.Where(a => !CanCopyAudio(a, request)))
+            foreach (var a in KeptAudio(media, request).Where(a => !CanCopyAudio(a, request)))
                 w.Add($"Audio track {a.Index} ({a.Codec}) re-encoded to AAC {AudioBitrateKbps(a, request)} kbps.");
+        if (request.IncludeAudio && media.Audio.Except(KeptAudio(media, request)).ToList() is { Count: > 0 } dropped)
+            w.Add($"{dropped.Count} audio track(s) not included: {string.Join("; ", dropped.Select(a => a.Describe()))}. Only the main track was kept.");
+        foreach (var a in KeptAudio(media, request).Where(a => IsDownmixed(a, request)))
+            w.Add($"Audio {a.Describe()} downmixed from {a.Channels} channels to stereo.");
         if (media.Video is { IsHdr: true } && request.Encoder != VideoEncoder.SvtAv1)
             w.Add("HDR source on a hardware encoder: HDR metadata may not be preserved. Software encoding is recommended for HDR.");
         return w;
     }
 
+    /// <summary>Source audio streams that go into the output.</summary>
+    public static IEnumerable<AudioStreamInfo> KeptAudio(MediaInfo media, EncodeRequest request) =>
+        !request.IncludeAudio ? [] : request.AudioStreamIndexes is { } keep ? media.Audio.Where(a => keep.Contains(a.Index)) : media.Audio;
+
+    static bool IsDownmixed(AudioStreamInfo a, EncodeRequest request) => request.DownmixToStereo && a.Channels > 2;
+
     public static int AudioBitrateKbps(AudioStreamInfo a, EncodeRequest request) =>
-        request.AudioBitrateKbps ?? a.Channels switch { <= 1 => 96, 2 => 160, _ => Math.Min(a.Channels, 8) * 64 };
+        request.AudioBitrateKbps ?? (IsDownmixed(a, request) ? 2 : a.Channels) switch { <= 1 => 96, 2 => 160, var c => Math.Min(c, 8) * 64 };
 
     static bool CanCopyAudio(AudioStreamInfo a, EncodeRequest request) =>
-        request.AudioBitrateKbps == null && (request.Container == OutputContainer.Mkv
+        request.AudioBitrateKbps == null && !IsDownmixed(a, request) && (request.Container == OutputContainer.Mkv
             ? !a.Codec.StartsWith("pcm_") && a.Codec is not ("flac" or "alac" or "truehd")
             : Mp4CopyAudio.Contains(a.Codec));
+
+    /// <summary>Scale and fps filters; empty when the source is kept as it is.</summary>
+    internal static List<string> VideoFilters(VideoStreamInfo v, EncodeRequest request)
+    {
+        var filters = new List<string>();
+        // Autorotate runs before these filters, so they see the displayed orientation.
+        var (w, h) = v.DisplaySize;
+        if (request.MaxShortSide is int side && Math.Min(w, h) > side)
+            filters.Add(w <= h ? $"scale={side}:-2:flags=lanczos" : $"scale=-2:{side}:flags=lanczos");
+        if (request.MaxFrameRate is double fps && v.FrameRate > fps + 0.01)
+            filters.Add("fps=" + fps.ToString(CultureInfo.InvariantCulture));
+        return filters;
+    }
 
     public static List<string> Build(MediaInfo media, EncodeRequest request, VideoEncoder encoder, string outputPath)
     {
@@ -53,26 +76,31 @@ public static class FfmpegArguments
         {
             "-hide_banner", "-nostdin", "-y", "-loglevel", "warning",
             "-progress", "pipe:1", "-nostats", "-stats_period", "0.5",
-            "-i", media.Path,
+        };
+        // Input-side seek is fast and, because the video is re-encoded, frame-accurate.
+        if (request.TrimStart is { } start && start > TimeSpan.Zero) args.AddRange(["-ss", Seconds(start)]);
+        args.AddRange(["-i", media.Path]);
+        if (request.TrimStart is { TotalSeconds: > 0 } || request.TrimEnd is { } end && end < media.Duration)
+            args.AddRange(["-t", Seconds(request.OutputDuration(media))]);
+        args.AddRange([
             "-map_metadata", "0", "-map_chapters", "0",
             "-map", $"0:{video.Index}",
             // Keep source timestamps: FFmpeg's MP4 default would otherwise force constant frame rate.
             "-fps_mode", "vfr",
-        };
+        ]);
+        if (VideoFilters(video, request) is { Count: > 0 } filters) args.AddRange(["-vf", string.Join(",", filters)]);
         args.AddRange(VideoCodecArgs(video, q, encoder, request.SvtParams));
 
-        if (request.IncludeAudio)
+        int audioIdx = 0;
+        foreach (var a in KeptAudio(media, request))
         {
-            int outIdx = 0;
-            foreach (var a in media.Audio)
-            {
-                args.AddRange(["-map", $"0:{a.Index}"]);
-                if (CanCopyAudio(a, request))
-                    args.AddRange([$"-c:a:{outIdx}", "copy"]);
-                else
-                    args.AddRange([$"-c:a:{outIdx}", "aac", $"-b:a:{outIdx}", $"{AudioBitrateKbps(a, request)}k"]);
-                outIdx++;
-            }
+            args.AddRange(["-map", $"0:{a.Index}"]);
+            if (CanCopyAudio(a, request))
+                args.AddRange([$"-c:a:{audioIdx}", "copy"]);
+            else
+                args.AddRange([$"-c:a:{audioIdx}", "aac", $"-b:a:{audioIdx}", $"{AudioBitrateKbps(a, request)}k"]);
+            if (IsDownmixed(a, request)) args.AddRange([$"-ac:a:{audioIdx}", "2"]);
+            audioIdx++;
         }
 
         if (request.IncludeSubtitles)
@@ -119,6 +147,8 @@ public static class FfmpegArguments
                 throw new ArgumentOutOfRangeException(nameof(encoder));
         }
     }
+
+    static string Seconds(TimeSpan t) => t.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture);
 
     /// <summary>Renders an argument list as a copy-pasteable command line for the log.</summary>
     public static string ToDisplayString(string exe, IEnumerable<string> args) =>

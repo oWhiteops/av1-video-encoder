@@ -49,6 +49,28 @@ public sealed record EncodeRequest
     /// <summary>Hard size limit. A temp output over it is deleted before it can reach <see cref="OutputPath"/>.</summary>
     public long? MaxOutputBytes { get; init; }
 
+    // The options below default to "leave the source as it is", which is what Compress mode uses.
+
+    /// <summary>Encode only this part of the source.</summary>
+    public TimeSpan? TrimStart { get; init; }
+    public TimeSpan? TrimEnd { get; init; }
+    /// <summary>Downscale so the displayed short side is at most this (720 = "720p", portrait included). Never upscales.</summary>
+    public int? MaxShortSide { get; init; }
+    /// <summary>Lower the frame rate to this when the source is faster. Never raises it.</summary>
+    public double? MaxFrameRate { get; init; }
+    /// <summary>Source audio stream indexes to keep; null keeps all.</summary>
+    public IReadOnlyList<int>? AudioStreamIndexes { get; init; }
+    /// <summary>Downmix tracks with more than two channels to stereo.</summary>
+    public bool DownmixToStereo { get; init; }
+
+    /// <summary>Length of the output: the trimmed range, or the whole source.</summary>
+    public TimeSpan OutputDuration(MediaInfo media)
+    {
+        var start = TrimStart ?? TimeSpan.Zero;
+        var end = TrimEnd is { } e && e < media.Duration ? e : media.Duration;
+        return end > start ? end - start : TimeSpan.Zero;
+    }
+
     public OutputContainer Container =>
         Path.GetExtension(OutputPath).Equals(".mkv", StringComparison.OrdinalIgnoreCase) ? OutputContainer.Mkv : OutputContainer.Mp4;
 }

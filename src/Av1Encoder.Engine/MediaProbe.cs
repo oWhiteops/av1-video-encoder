@@ -14,7 +14,13 @@ public sealed record VideoStreamInfo(
     public bool IsHdr => ColorTransfer is "smpte2084" or "arib-std-b67";
 }
 
-public sealed record AudioStreamInfo(int Index, string Codec, int Channels, string? ChannelLayout, int SampleRate, long? BitRate, string? Language);
+public sealed record AudioStreamInfo(int Index, string Codec, int Channels, string? ChannelLayout, int SampleRate, long? BitRate, string? Language,
+    string? Title = null, bool IsDefault = false)
+{
+    /// <summary>"track 2 (Mic, eng)" for messages.</summary>
+    public string Describe() =>
+        $"track {Index}" + (new[] { Title, Language is "und" ? null : Language }.Where(x => !string.IsNullOrEmpty(x)).ToArray() is { Length: > 0 } parts ? $" ({string.Join(", ", parts)})" : "");
+}
 
 public sealed record SubtitleStreamInfo(int Index, string Codec, string? Language)
 {
@@ -25,7 +31,11 @@ public sealed record SubtitleStreamInfo(int Index, string Codec, string? Languag
 public sealed record MediaInfo(
     string Path, string FormatName, string FormatLongName, long SizeBytes, TimeSpan Duration, long? BitRate,
     VideoStreamInfo? Video, IReadOnlyList<AudioStreamInfo> Audio, IReadOnlyList<SubtitleStreamInfo> Subtitles,
-    int ExtraVideoStreams, int AttachmentStreams, int DataStreams);
+    int ExtraVideoStreams, int AttachmentStreams, int DataStreams)
+{
+    /// <summary>The track players pick by default: the one flagged default, else the first.</summary>
+    public AudioStreamInfo? DefaultAudio => Audio.FirstOrDefault(a => a.IsDefault) ?? Audio.FirstOrDefault();
+}
 
 public static class MediaProbe
 {
@@ -89,7 +99,7 @@ public static class MediaProbe
                         break;
                     case "audio":
                         audio.Add(new AudioStreamInfo(index, codec, Int(s, "channels") ?? 2, Str(s, "channel_layout"),
-                            Int(s, "sample_rate") ?? 0, Long(s, "bit_rate"), Tag(s, "language")));
+                            Int(s, "sample_rate") ?? 0, Long(s, "bit_rate"), Tag(s, "language"), Tag(s, "title"), IsDefault(s)));
                         break;
                     case "subtitle":
                         subs.Add(new SubtitleStreamInfo(index, codec, Tag(s, "language")));
@@ -119,6 +129,9 @@ public static class MediaProbe
         return new VideoStreamInfo(index, codec, Int(s, "width") ?? 0, Int(s, "height") ?? 0, avg > 0 ? avg : real, vfr,
             Rotation(s), pixFmt, BitDepth(pixFmt, Int(s, "bits_per_raw_sample")), Str(s, "color_transfer"));
     }
+
+    static bool IsDefault(JsonElement s) =>
+        s.TryGetProperty("disposition", out var d) && d.TryGetProperty("default", out var v) && v.GetInt32() == 1;
 
     static bool IsAttachedPicture(JsonElement s) =>
         s.TryGetProperty("disposition", out var d) && d.TryGetProperty("attached_pic", out var a) && a.GetInt32() == 1;

@@ -32,7 +32,7 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
     public static long EstimateRequiredBytes(EncodeRequest request, MediaInfo media)
     {
         if (request.Quality.VideoBitrateKbps is int kbps)
-            return (long)((kbps + 320) * 1000 / 8.0 * media.Duration.TotalSeconds * 1.1);
+            return (long)((kbps + 320) * 1000 / 8.0 * request.OutputDuration(media).TotalSeconds * 1.1);
         // ponytail: AV1 at these CRFs is almost always smaller than typical sources, so source size is a
         // conservative ceiling. Lossless or very low bitrate sources can exceed it; FFmpeg then reports disk full.
         return Math.Max(media.SizeBytes, 16L * 1024 * 1024);
@@ -104,7 +104,7 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         var args = FfmpegArguments.Build(Media, Request, encoder, temp);
         log?.Invoke("Running: " + FfmpegArguments.ToDisplayString("ffmpeg", args));
 
-        double total = Media.Duration.TotalSeconds;
+        double total = Request.OutputDuration(Media).TotalSeconds;
         string stage = encoder == VideoEncoder.SvtAv1 ? "Encoding (SVT-AV1)" : $"Encoding ({encoder} hardware)";
         var stallTimeout = StallTimeout ?? (encoder == VideoEncoder.SvtAv1 ? null : HardwareStallTimeout);
         var sinceAdvance = Stopwatch.StartNew();
@@ -167,10 +167,12 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         try { output = await MediaProbe.ProbeAsync(tools, temp, ct); }
         catch (EncodeException ex) { throw new EncodeException("The encoded file could not be verified and was discarded.", ex.Details); }
         if (output.Video?.Codec != "av1") throw new EncodeException("The encoded file does not contain AV1 video and was discarded.");
-        if (Request.IncludeAudio && Media.Audio.Count > 0 && output.Audio.Count != Media.Audio.Count)
+        int expectedAudio = FfmpegArguments.KeptAudio(Media, Request).Count();
+        if (expectedAudio > 0 && output.Audio.Count != expectedAudio)
             throw new EncodeException("The encoded file is missing audio tracks and was discarded.");
-        if (Media.Duration.TotalSeconds > 2 && output.Duration.TotalSeconds < Media.Duration.TotalSeconds * 0.9)
-            throw new EncodeException($"The encoded file is shorter than the source ({output.Duration:hh\\:mm\\:ss} vs {Media.Duration:hh\\:mm\\:ss}) and was discarded.");
+        var expected = Request.OutputDuration(Media);
+        if (expected.TotalSeconds > 2 && output.Duration.TotalSeconds < expected.TotalSeconds * 0.9)
+            throw new EncodeException($"The encoded file is shorter than the source ({output.Duration:hh\\:mm\\:ss} vs {expected:hh\\:mm\\:ss}) and was discarded.");
         return output;
     }
 
