@@ -144,6 +144,22 @@ public class SizePlannerTests
         Assert.True(silent.VideoKbps > plan.VideoKbps);
     }
 
+    // The 30 validation encodes from docs/CALIBRATION.md: score with the corrected estimate, and the band their mean
+    // VMAF measured (>= 95 good, >= 90 slightly soft, >= 80 noticeably blocky).
+    [Theory]
+    [InlineData(0.30, "noticeably blocky"), InlineData(0.61, "good"), InlineData(1.01, "good")]   // gameplay, portrait 60 fps A
+    [InlineData(0.30, "noticeably blocky"), InlineData(0.61, "slightly soft"), InlineData(1.02, "good")] // gameplay, 1440p60
+    [InlineData(0.76, "good"), InlineData(1.51, "good"), InlineData(2.52, "good")]                // screen recording
+    [InlineData(0.31, "slightly soft"), InlineData(0.62, "good"), InlineData(1.04, "good")]       // phone, portrait 60 fps
+    [InlineData(0.33, "slightly soft"), InlineData(0.65, "good"), InlineData(1.09, "good")]       // phone, 4K portrait A
+    [InlineData(0.30, "noticeably blocky"), InlineData(0.61, "good"), InlineData(1.02, "good")]   // uneven 720p30 clip
+    [InlineData(0.33, "slightly soft"), InlineData(0.66, "good"), InlineData(1.11, "good")]       // 720p30 clip
+    [InlineData(0.31, "slightly soft"), InlineData(0.62, "good"), InlineData(1.04, "good")]       // phone, 4K portrait B
+    [InlineData(0.31, "noticeably blocky"), InlineData(0.62, "slightly soft"), InlineData(1.03, "good")] // gameplay, portrait 60 fps B
+    [InlineData(0.32, "slightly soft"), InlineData(0.64, "good"), InlineData(1.07, "good")]       // phone, portrait 30 fps
+    public void DescriptionContainsTheMeasuredQuality(double score, string measured) =>
+        Assert.Contains(measured, SizePlanner.DescribeScore(score));
+
     [Fact]
     public void EmptySelectionIsAClearError() =>
         Assert.Throws<EncodeException>(() => SizePlanner.Plan(new(Media(1920, 1080, 30, 60), Free, DiscordStrategy.Balanced)

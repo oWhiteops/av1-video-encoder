@@ -317,7 +317,7 @@ public sealed partial class MainViewModel
     public bool HasPlanError => planError != null;
     public bool HasPlan => plan != null;
     public string PlanSummary => plan?.Summary ?? "";
-    public string PlanHeadline => plan == null ? "" : $"Expected about {Format.Size(plan.ExpectedBytes)} · quality likely {SizePlanner.Describe(plan.Label)}";
+    public string PlanHeadline => plan == null ? "" : $"Expected about {Format.Size(plan.ExpectedBytes)} · quality likely {SizePlanner.DescribeScore(plan.Score)}";
     public bool PlanIsRisky => plan is { Label: QualityLabel.Blocky or QualityLabel.Severe };
     public string PlanAdvice => plan == null ? "" : string.Join(Environment.NewLine, plan.Advice.Select(a => "• " + a));
     public bool HasPlanAdvice => plan is { Advice.Count: > 0 };

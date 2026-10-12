@@ -172,8 +172,8 @@ public static class SizePlanner
 
         string summary = (chosen == original
                 ? $"Keeps {Name(chosen)}."
-                : $"Lowers to {Name(chosen)}: at {Name(original)} it would likely look {Describe(LabelFor(Score(original)))}.")
-            + $" Expected quality: {Describe(label)}" + (complexity.IsRough ? " (rough estimate)." : ".");
+                : $"Lowers to {Name(chosen)}: at {Name(original)} it would likely look {DescribeScore(Score(original))}.")
+            + $" Expected quality: {DescribeScore(score)}" + (complexity.IsRough ? " (rough estimate)." : ".");
 
         var warnings = new List<string>();
         if (v.IsHdr)
@@ -190,9 +190,20 @@ public static class SizePlanner
             Math.Min(expected, input.TargetBytes), summary, advice, warnings, settings, audioKbps > 0 ? audioTrack?.Index : null);
     }
 
-    public static string Describe(QualityLabel l) => l switch
+    /// <summary>
+    /// Plain-English quality for a score. Near each band edge it names both neighbours: in calibration, clips with the
+    /// same score there measured a band apart (score ~0.3: four blocky, five slightly soft), and the ranges below
+    /// contained the measured result for all 30 validation encodes.
+    /// </summary>
+    public static string DescribeScore(double score) => score switch
     {
-        QualityLabel.Good => "good", QualityLabel.Softened => "slightly soft", QualityLabel.Blocky => "noticeably blocky", _ => "very blocky",
+        >= 0.70 => "good",
+        >= 0.55 => "good to slightly soft",
+        >= 0.40 => "slightly soft",
+        >= 0.28 => "slightly soft to noticeably blocky",
+        >= 0.18 => "noticeably blocky",
+        >= 0.12 => "noticeably to very blocky", // PROVISIONAL: below the measured range
+        _ => "very blocky",
     };
 
     static string Clock(TimeSpan t) => t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");

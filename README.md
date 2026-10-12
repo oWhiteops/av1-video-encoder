@@ -131,6 +131,12 @@ scripts\benchmark.ps1 -InputFile clip.mp4    # size / speed / VMAF grid used to 
   vendor documentation but were not tested on real hardware; they fall back to software on failure.
 - The bundled FFmpeg is about 160 MB, which dominates the download size.
 
+- **Discord quality estimates**: the recommendation's quality wording ("good", "good to slightly soft", ...) comes
+  from a short sample check calibrated on 10 real clips (`docs/CALIBRATION.md`). It describes the video as a whole:
+  on uneven clips a few busy seconds can look noticeably worse than the rest, and that is not predicted.
+- **Discord playback**: AV1 MP4 uploads (8- and 10-bit, landscape and portrait) were accepted and played in a test on
+  a free account; the platforms tried were not recorded individually, and Discord can change its limits or players.
+
 ## License
 
 MIT for this application's code (`LICENSE`). FFmpeg and its libraries are LGPL v3 and others; see

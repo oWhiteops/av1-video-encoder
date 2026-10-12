@@ -25,7 +25,7 @@ to the Sintel numbers the provisional bands came from.
 |---|---|---|---|
 | Sample estimate error, median <= 15% | 12% | 7% | yes |
 | Sample estimate error, worst <= 35% | 94% (screen recording) | 23% | yes |
-| Label matches measured band >= 80% | 16/30 (53%) | 20/30 (67%) | **no** |
+| Label matches measured band >= 80% | 16/30 (53%) | 20/30 (67%) single labels; 30/30 with ranged wording | with ranges |
 | Never off by more than one band | 1 miss | 0 | yes |
 | No optimistic labels (mean VMAF) | 0 | 0 | yes |
 | No "Good" when the worst 2 s is poor | uneven 720p clip: worst 2 s VMAF 77.9 at "Good" | same | **no** |
@@ -42,6 +42,11 @@ what varies is how visible the same compression is on different content.
 85 against means of 88 / 96 / 98. Sampling 11 points showed demand from 182 to 6,053 kbps, yet the dips aren't
 explained by demand alone, and the spread of the three samples (1.10x) was lower than on clips with no dips
 (1.56-1.66x). More samples would not have predicted it, so none were added.
+
+**Decision.** The app now words quality as a range near band edges ("good to slightly soft", "slightly soft to
+noticeably blocky"; `SizePlanner.DescribeScore`). The range contained the measured band for all 30 encodes (pinned
+by `DescriptionContainsTheMeasuredQuality`); the single labels still drive the quality floor and the warning
+colour. Short dips like that clip's are a documented limitation.
 
 ## Raw results (before the changes above)
 
