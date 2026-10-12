@@ -48,7 +48,27 @@ noticeably blocky"; `SizePlanner.DescribeScore`). The range contained the measur
 by `DescriptionContainsTheMeasuredQuality`); the single labels still drive the quality floor and the warning
 colour. Short dips like that clip's are a documented limitation.
 
-## Raw results (before the changes above)
+# Size and time estimates, 2026-10-12
+
+`EncodeEstimator` predicts output size and encoding time from the same quick check, for any preset, quality,
+trim or resolution. Validated with `ESTIMATE_DIR=<folder> dotnet test --filter EstimateValidationTests`: a 30 s
+excerpt of each calibration clip, encoded at High Quality, Balanced, Smallest File and a Discord Balanced plan
+(40 encodes, 23 min, nothing else running). Ratios are actual / point estimate.
+
+| | First run | After fixes | Shown range | Inside range |
+|---|---|---|---|---|
+| Size (CRF presets) | 0.89-1.42 | same | 0.85-1.25x | 29 of 30 (miss: screen recording at Smallest File, 1.42x) |
+| Time | 0.35-1.03 | 0.55-1.20, median 0.80 | 0.7-1.4x of 0.8 x estimate | 37 of 40 (the three misses were faster) |
+
+**Fix found by the first run.** Each 2 s sample paid a start-up cost (launch, seek, decoder and encoder set-up) of
+0.2-1.5 s depending on the source (more for 4K HEVC), so speed read low and times came out up to 2.9x too long. The
+check now times a 1-frame encode at the first sample and subtracts it. Encode speed by preset (relative to preset 8,
+timed on 1080p60 and 4K30 clips): 2: 8.3x, 3: 4.9x, 4: 2.4x, 5: 2.0x, 6: 1.7x, 8: 1x, 10: 0.74x, 12: 0.72x.
+
+Times are for the computer running the app, with nothing else running; other load makes encodes slower than shown. Hardware encoders get
+no time estimate.
+
+## Raw calibration results (before the changes above)
 
 ## Calibration (60 s excerpt, preset 8, video only)
 

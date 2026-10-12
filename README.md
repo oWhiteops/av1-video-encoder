@@ -16,6 +16,9 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
 2. Drag a video onto the window (or click the drop area to browse). MP4, MOV, MKV, AVI, WebM and most other
    formats work.
 3. Choose a preset. **Balanced** suits almost everything.
+   Once a video is loaded, a few-second quality check estimates the output size and encoding time, for example
+   *Estimated output ≈ 14–21 MB · encoding time ≈ 1–2 min on this PC*. It updates as you change settings. On test
+   videos about 9 in 10 results landed inside the shown ranges; other programs running make encoding slower.
 4. Check the output folder and file name (default: next to the source, named `<name>_av1.mp4`).
 5. Press **Start**. You can **Pause**, **Resume** or **Cancel** at any time; after a failure or cancel the
    button becomes **Retry**.

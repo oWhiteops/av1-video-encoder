@@ -95,22 +95,39 @@ public static class SizeTargeting
             ? [(Start: start, Length: length)]
             : SamplePositions.Select(p => (Start: start + length * p - SampleLength / 2, Length: SampleLength)).ToArray();
 
+        static string Secs(TimeSpan t) => t.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+        async Task<(double Seconds, FfmpegExit Exit)> Run(TimeSpan at, string[] limit, string output)
+        {
+            string[] args =
+            [
+                "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-ss", Secs(at), "-i", media.Path, .. limit,
+                "-map", $"0:{video.Index}", "-an", "-sn", "-dn",
+                "-c:v", "libsvtav1", "-preset", "8", "-crf", "32", "-pix_fmt", "yuv420p10le", "-f", "matroska", output,
+            ];
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            var exit = await new FfmpegProcess().RunAsync(tools.FfmpegPath, args, null, null, ct);
+            return (clock.Elapsed.TotalSeconds, exit);
+        }
+
+        // Each run pays a fixed start-up cost (launch, seek, decoder and encoder set-up): 0.2 s to 1.5 s per run in the
+        // estimate validation, depending on the source. Timing a 1-frame encode at the first sample measures it, so
+        // the samples' speed reflects encoding alone; without this, time estimates came out up to 2.9x too long.
+        double overhead;
+        var probe = Path.Combine(Path.GetTempPath(), $"av1-analysis-{Guid.NewGuid():N}.mkv");
+        try { overhead = (await Run(samples[0].Start, ["-frames:v", "1"], probe)).Seconds; }
+        finally { try { File.Delete(probe); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+
         var rates = new List<double>();
+        double encodeSeconds = 0, frames = 0;
         for (int i = 0; i < samples.Length; i++)
         {
             var (at, len) = samples[i];
             var temp = Path.Combine(Path.GetTempPath(), $"av1-analysis-{Guid.NewGuid():N}.mkv");
             try
             {
-                string[] args =
-                [
-                    "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
-                    "-ss", at.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture), "-i", media.Path,
-                    "-t", len.TotalSeconds.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture),
-                    "-map", $"0:{video.Index}", "-an", "-sn", "-dn",
-                    "-c:v", "libsvtav1", "-preset", "8", "-crf", "32", "-pix_fmt", "yuv420p10le", "-f", "matroska", temp,
-                ];
-                var exit = await new FfmpegProcess().RunAsync(tools.FfmpegPath, args, null, null, ct);
+                var (seconds, exit) = await Run(at, ["-t", Secs(len)], temp);
+                encodeSeconds += Math.Max(seconds - overhead, seconds * 0.1);
+                frames += len.TotalSeconds * Math.Max(video.FrameRate, 1);
                 if (exit.ExitCode != 0 || !File.Exists(temp))
                     throw new EncodeException("The quality check could not read this video.", string.Join(Environment.NewLine, exit.StderrTail));
                 double bytes = new FileInfo(temp).Length;
@@ -128,7 +145,7 @@ public static class SizeTargeting
             }
             progress?.Report((i + 1.0) / samples.Length);
         }
-        return new ComplexityEstimate(rates.Average(), rates.Max(), IsRough: false);
+        return new ComplexityEstimate(rates.Average(), rates.Max(), IsRough: false, Preset8Fps: frames / Math.Max(encodeSeconds, 0.001));
     }
 
     /// <summary>SVT-AV1's default keyframe spacing with this build: 321 frames at 50+ fps, 161 below (measured).</summary>

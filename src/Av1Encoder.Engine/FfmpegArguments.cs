@@ -49,7 +49,7 @@ public static class FfmpegArguments
     public static int AudioBitrateKbps(AudioStreamInfo a, EncodeRequest request) =>
         request.AudioBitrateKbps ?? (IsDownmixed(a, request) ? 2 : a.Channels) switch { <= 1 => 96, 2 => 160, var c => Math.Min(c, 8) * 64 };
 
-    static bool CanCopyAudio(AudioStreamInfo a, EncodeRequest request) =>
+    internal static bool CanCopyAudio(AudioStreamInfo a, EncodeRequest request) =>
         request.AudioBitrateKbps == null && !IsDownmixed(a, request) && (request.Container == OutputContainer.Mkv
             ? !a.Codec.StartsWith("pcm_") && a.Codec is not ("flac" or "alac" or "truehd")
             : Mp4CopyAudio.Contains(a.Codec));

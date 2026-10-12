@@ -34,10 +34,19 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         if (EqualityComparer<T>.Default.Equals(field, value)) return;
         field = value;
-        PropertyChanged?.Invoke(this, new(name));
+        Notify(name);
     }
 
-    void Raise(params string[] names) { foreach (var n in names) PropertyChanged?.Invoke(this, new(n)); }
+    void Raise(params string[] names) { foreach (var n in names) Notify(n); }
+
+    /// <summary>
+    /// The size/time estimate depends on almost every setting, so any change refreshes it; it is cheap, pure arithmetic.
+    /// </summary>
+    void Notify(string? name)
+    {
+        PropertyChanged?.Invoke(this, new(name));
+        if (name != nameof(EstimateLine)) PropertyChanged?.Invoke(this, new(nameof(EstimateLine)));
+    }
 
     // ---------- State ----------
 
@@ -236,6 +245,34 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         }
     }
 
+    // ---------- Estimate ----------
+
+    /// <summary>"Estimated output ≈ 48–62 MB · encoding time ≈ 3–5 min on this PC", from the quick check.</summary>
+    public string EstimateLine
+    {
+        get
+        {
+            if (media?.Video == null || tools == null) return "";
+            if (complexity == null)
+                return IsAnalyzing ? "Estimating output size and encoding time…"
+                    : SkipQualityAnalysis ? "Size and time estimates need the quality check, which is turned off." : "";
+            EncodeRequest? request;
+            if (IsDiscordMode)
+                request = plan == null || planInput == null ? null
+                    : plan.Apply(new EncodeRequest { InputPath = media.Path, OutputPath = "x.mp4", Quality = QualitySettings.For(QualityPreset.Balanced) }, planInput)
+                        with { Quality = new QualitySettings(32, plan.Settings.Speed, 26, VideoBitrateKbps: plan.VideoKbps) };
+            else
+                request = BuildRequest(OutputFileName.Length > 0 ? OutputFileName : "x.mp4", false) with { TrimStart = null, TrimEnd = null };
+            if (request == null) return "";
+            var e = EncodeEstimator.Estimate(media, request, complexity);
+            string time = e.MinTime is { } lo && e.MaxTime is { } hi
+                ? $"encoding time ≈ {Format.TimeRange(lo, hi)} on this PC"
+                : "no time estimate for hardware encoders";
+            // Discord mode already shows its expected size next to the limit.
+            return IsDiscordMode ? $"Estimated {time}." : $"Estimated output ≈ {Format.SizeRange(e.MinBytes, e.MaxBytes)} · {time}.";
+        }
+    }
+
     // ---------- Progress & result ----------
 
     double percent;
@@ -408,6 +445,23 @@ static class Format
     };
 
     public static string Duration(TimeSpan t) => t.TotalHours >= 1 ? t.ToString(@"h\:mm\:ss") : t.ToString(@"m\:ss");
+
+    /// <summary>"48–62 MB", "1.2–1.6 GB", "820 KB–1.1 MB".</summary>
+    public static string SizeRange(long lo, long hi)
+    {
+        (double div, string unit) = hi >= 1L << 30 ? (1L << 30, "GB") : hi >= 1L << 20 ? (1L << 20, "MB") : (1024.0, "KB");
+        string F(long b) => b / div is var x && x >= 10 ? $"{x:0}" : $"{x:0.0}";
+        return lo / div < 0.1 ? $"{Size(lo)}–{F(hi)} {unit}" : $"{F(lo)}–{F(hi)} {unit}";
+    }
+
+    /// <summary>"40–60 s", "3–5 min", "1.2–1.7 h"; a range that rounds to one value is shown once.</summary>
+    public static string TimeRange(TimeSpan lo, TimeSpan hi)
+    {
+        if (hi.TotalSeconds < 90) return Join(Math.Max(1, Math.Floor(lo.TotalSeconds)), Math.Ceiling(hi.TotalSeconds), "s");
+        if (hi.TotalMinutes < 90) return Join(Math.Max(1, Math.Floor(lo.TotalMinutes)), Math.Ceiling(hi.TotalMinutes), "min");
+        return Join(Math.Floor(lo.TotalHours * 10) / 10, Math.Ceiling(hi.TotalHours * 10) / 10, "h");
+        static string Join(double a, double b, string unit) => a >= b ? $"{b:0.#} {unit}" : $"{a:0.#}–{b:0.#} {unit}";
+    }
 
     public static string Channels(int c) => c switch { 1 => "mono", 2 => "stereo", 6 => "5.1", 8 => "7.1", _ => $"{c} ch" };
 }

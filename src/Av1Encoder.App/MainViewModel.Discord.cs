@@ -34,7 +34,7 @@ public sealed partial class MainViewModel
             if (media != null && OutputFileName == DefaultOutputName(media, !value)) OutputFileName = DefaultOutputName(media, value);
             UpdateContainerNote();
             Raise(nameof(IsDiscordMode), nameof(IsCompressMode));
-            if (value) StartAnalysis(); else CancelAnalysis();
+            if (complexity == null && !IsAnalyzing) StartAnalysis();
             Replan();
         }
     }
@@ -270,10 +270,12 @@ public sealed partial class MainViewModel
     {
         analysisCts?.Cancel();
         complexity = null;
-        if (!IsDiscordMode || media?.Video == null || tools == null || IsBusy) return;
+        // Feeds both modes: Discord recommendations and the size/time estimate. It follows the Discord trim range;
+        // Compress mode scales the result to the whole video.
+        if (media?.Video == null || tools == null || IsBusy) return;
         if (SkipQualityAnalysis)
         {
-            AnalysisStatus = "Quality check skipped. Recommendations use a rough estimate.";
+            AnalysisStatus = "Quality check skipped.";
             Replan();
             return;
         }
@@ -281,7 +283,7 @@ public sealed partial class MainViewModel
         var (m, s, e) = (media, trimStart, trimEnd);
         IsAnalyzing = true;
         AnalysisPercent = 0;
-        AnalysisStatus = "Checking how this video compresses…";
+        AnalysisStatus = "Checking how this video compresses (a few seconds)…";
         var progress = new Progress<double>(p => { if (cts == analysisCts) AnalysisPercent = p * 100; }); // created here: reports land on the UI thread
         try
         {
@@ -293,12 +295,12 @@ public sealed partial class MainViewModel
         }
         catch (OperationCanceledException)
         {
-            if (cts == analysisCts) AnalysisStatus = "Quality check stopped. Recommendations use a rough estimate.";
+            if (cts == analysisCts) AnalysisStatus = "Quality check stopped.";
         }
         catch (Exception ex) // async void: nothing may escape
         {
             AppLog.Write($"Quality check failed: {ex.Message} {(ex as EncodeException)?.Details}");
-            if (cts == analysisCts) AnalysisStatus = "The quality check failed. Recommendations use a rough estimate.";
+            if (cts == analysisCts) AnalysisStatus = "The quality check failed; see the log.";
         }
         finally
         {

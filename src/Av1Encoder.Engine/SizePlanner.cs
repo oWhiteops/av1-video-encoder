@@ -23,7 +23,8 @@ public enum QualityLabel { Good, Softened, Blocky, Severe }
 /// How many kbps the video needs for Balanced-level quality (CRF 32) at its source resolution and frame rate, as SVT-AV1
 /// preset 8 encodes it. From sample encodes (<see cref="SizeTargeting.AnalyzeAsync"/>) or, when rough, from resolution alone.
 /// </summary>
-public sealed record ComplexityEstimate(double Crf32Kbps, double PeakCrf32Kbps, bool IsRough);
+/// <param name="Preset8Fps">Source frames per second the samples encoded at (preset 8, on the computer running the check); null when not measured.</param>
+public sealed record ComplexityEstimate(double Crf32Kbps, double PeakCrf32Kbps, bool IsRough, double? Preset8Fps = null);
 
 /// <summary>What the user chose. Null overrides mean "Auto".</summary>
 public sealed record PlanInput(MediaInfo Media, long TargetBytes, DiscordStrategy Strategy)
@@ -77,7 +78,11 @@ public static class SizePlanner
     // 0.007 (screen recording) to 0.18 (1440p60 gameplay), so this really is rough.
     public const double RoughBitsPerPixel = 0.045;
     // Sintel benchmark, CRF 32: preset 4 = 4.74 MB, 6 = 5.22 MB, 8 = 5.89 MB. Analysis encodes at preset 8.
-    public static double PresetFactor(int speed) => speed <= 4 ? 0.805 : speed <= 6 ? 0.886 : 1.0;
+    // 4/6/8 measured on Sintel; the others PROVISIONAL, interpolated (faster presets make larger files).
+    public static double PresetFactor(int speed) => Math.Clamp(speed, 2, 12) switch
+    {
+        2 => 0.78, 3 => 0.79, 4 => 0.805, 5 => 0.85, 6 => 0.886, 7 => 0.94, 8 => 1.0, 9 => 1.04, 10 => 1.08, 11 => 1.1, _ => 1.12,
+    };
 
     /// <summary>
     /// Quality floor per strategy (minimum score); retries stop below it. Best Quality stops where clips started measuring
