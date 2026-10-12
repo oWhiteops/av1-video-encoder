@@ -90,9 +90,8 @@ public static class SizeTargeting
         var start = trimStart ?? TimeSpan.Zero;
         var length = new EncodeRequest { InputPath = media.Path, OutputPath = "", Quality = QualitySettings.For(QualityPreset.Balanced), TrimStart = trimStart, TrimEnd = trimEnd }
             .OutputDuration(media);
-        // ponytail: each sample starts on a keyframe, so samples read somewhat high against a full encode; the
-        // calibration study measures and corrects that bias rather than guessing it here.
-        (TimeSpan Start, TimeSpan Length)[] samples = length <= SampleLength * SamplePositions.Length
+        bool whole = length <= SampleLength * SamplePositions.Length;
+        (TimeSpan Start, TimeSpan Length)[] samples = whole
             ? [(Start: start, Length: length)]
             : SamplePositions.Select(p => (Start: start + length * p - SampleLength / 2, Length: SampleLength)).ToArray();
 
@@ -114,7 +113,14 @@ public static class SizeTargeting
                 var exit = await new FfmpegProcess().RunAsync(tools.FfmpegPath, args, null, null, ct);
                 if (exit.ExitCode != 0 || !File.Exists(temp))
                     throw new EncodeException("The quality check could not read this video.", string.Join(Environment.NewLine, exit.StderrTail));
-                rates.Add(new FileInfo(temp).Length * 8 / 1000.0 / len.TotalSeconds);
+                double bytes = new FileInfo(temp).Length;
+                // Every sample starts with a keyframe, but a full encode has one only every GOP. On static footage
+                // (screen recordings) that keyframe is most of a 2 s sample, so the estimate came out 1.94x too high
+                // in calibration. Charge the sample its share of one keyframe per GOP instead.
+                double gop = KeyframeIntervalSeconds(video.FrameRate);
+                if (!whole && len.TotalSeconds < gop && await FirstVideoPacketBytesAsync(tools, temp, ct) is long keyframe)
+                    bytes += keyframe * (len.TotalSeconds / gop - 1);
+                rates.Add(bytes * 8 / 1000.0 / len.TotalSeconds);
             }
             finally
             {
@@ -123,6 +129,23 @@ public static class SizeTargeting
             progress?.Report((i + 1.0) / samples.Length);
         }
         return new ComplexityEstimate(rates.Average(), rates.Max(), IsRough: false);
+    }
+
+    /// <summary>SVT-AV1's default keyframe spacing with this build: 321 frames at 50+ fps, 161 below (measured).</summary>
+    public static double KeyframeIntervalSeconds(double fps) => fps <= 0 ? 5.37 : (fps >= 50 ? 321 : 161) / fps;
+
+    static async Task<long?> FirstVideoPacketBytesAsync(FfmpegTools tools, string path, CancellationToken ct)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo(tools.FfprobePath)
+        {
+            UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true,
+        };
+        foreach (var a in new[] { "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=size", "-read_intervals", "%+#1", "-of", "csv=p=0", path })
+            psi.ArgumentList.Add(a);
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        var stdout = await p.StandardOutput.ReadToEndAsync(ct);
+        await p.WaitForExitAsync(ct);
+        return long.TryParse(stdout.Split('\n')[0].Trim(), out var size) ? size : null;
     }
 
     /// <summary>Prefixes the stage text, passing reports straight through (no extra thread hop or reordering).</summary>

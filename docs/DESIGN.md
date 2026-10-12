@@ -230,16 +230,18 @@ At most 3 attempts. After an oversized attempt only the video share is rescaled 
 when the next attempt would fall below it, encoding stops with `TargetUnreachableException` and the UI offers the
 planner's alternatives instead of a worse file.
 
-### Recommendations (provisional until calibrated)
+### Recommendations (calibrated on real footage)
 
 `SizeTargeting.AnalyzeAsync` encodes three 2 s samples (at 20/50/80% of the selection; a short selection whole) at
-CRF 32, preset 8, source size, and reports the kbps they needed. `SizePlanner` scores each candidate as
-`video budget / needed kbps`, with needed kbps scaled by pixels^0.75, frame rate^0.5 and a preset factor, then
-walks the ladder: original → 1080p → 720p at the source frame rate, then the same at 30 fps, then 480p.
+CRF 32, preset 8, source size, and reports the kbps they needed, charging each sample one keyframe per GOP rather
+than the full keyframe it starts with. `SizePlanner` scores each candidate as `video budget / needed kbps`, with
+needed kbps scaled by pixels^0.65, frame rate^0.65 and a preset factor, then walks the ladder: original → 1080p →
+720p at the source frame rate, then the same at 30 fps, then 480p.
 
-All of these constants are **provisional** (marked in `SizePlanner.cs`): the score bands, floors, exponents,
-the rough bits-per-pixel fallback, and the sample-vs-full-encode bias. They come from one clean clip (Sintel)
-and must be replaced by the calibration and validation study on real footage before release.
+The constants come from a calibration and validation run on 10 real clips; see `docs/CALIBRATION.md` for the data,
+what changed and the pass criteria. Two limits remain: labels match measured quality on about two thirds of encodes
+(errors are one band, always pessimistic), and short dips in quality on uneven clips are not predicted. The Blocky
+band and the Balanced/Fastest floors are below the measured range and stay provisional.
 
 ## Licensing summary
 

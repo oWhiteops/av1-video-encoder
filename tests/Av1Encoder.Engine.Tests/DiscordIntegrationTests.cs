@@ -206,6 +206,20 @@ public class DiscordIntegrationTests(Samples s)
     }
 
     [Fact]
+    public async Task AnalysisOfStaticFootageMatchesAFullEncode()
+    {
+        // Screen-recording-like: almost nothing moves, so each sample's opening keyframe dominates unless corrected
+        // (calibration measured 1.94x too high on a real screen recording before the correction).
+        var input = s.Get("static.mkv", "-f", "lavfi", "-i", "smptehdbars=s=1280x720:r=30:d=20,drawbox=x='t*20':y=300:w=40:h=40:color=white:t=fill", "-c:v", "ffv1");
+        var media = await MediaProbe.ProbeAsync(s.Tools, input);
+        var estimate = await SizeTargeting.AnalyzeAsync(s.Tools, media, null, null);
+        var full = Path.Combine(s.Dir, "static-full.mkv");
+        Samples.Run(s.Tools.FfmpegPath, ["-hide_banner", "-loglevel", "error", "-y", "-i", input, "-c:v", "libsvtav1", "-preset", "8", "-crf", "32", "-pix_fmt", "yuv420p10le", full]);
+        double fullKbps = new FileInfo(full).Length * 8 / 1000.0 / media.Duration.TotalSeconds;
+        Assert.InRange(estimate.Crf32Kbps / fullKbps, 0.65, 1.35);
+    }
+
+    [Fact]
     public async Task ShortSelectionIsAnalysedWhole()
     {
         var media = await MediaProbe.ProbeAsync(s.Tools, s.Basic);   // 4 s

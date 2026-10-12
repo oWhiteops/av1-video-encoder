@@ -60,25 +60,32 @@ public sealed record DiscordPlan(
 
 /// <summary>
 /// Chooses resolution, frame rate and audio for a size target and explains the trade-offs. Pure: no FFmpeg, no I/O.
-/// Every constant marked PROVISIONAL is a starting point until the calibration study (docs/DESIGN.md) replaces it.
+/// Constants come from the 2026-10-12 calibration on 10 real clips (docs/CALIBRATION.md); BlockyScore and the lower
+/// floors are still PROVISIONAL because no clip was measured below a score of 0.3.
 /// </summary>
 public static class SizePlanner
 {
-    // PROVISIONAL. Score bands: budget / bitrate needed for CRF-32 quality. Sintel: 0.68x of CRF-32 size = CRF 38 (VMAF 93.7),
-    // 0.47x = CRF 44 (VMAF 91.7). One clean clip only.
-    public const double GoodScore = 0.7, SoftenedScore = 0.45, BlockyScore = 0.25;
-    // PROVISIONAL. Bits needed scale sub-linearly with pixel count and frame rate.
-    public const double PixelExponent = 0.75, FrameRateExponent = 0.5;
-    // PROVISIONAL. Without sample encodes: bits per pixel per frame that CRF 32 needs on moderately busy footage.
-    // Sintel (clean animation) needed 0.015; gameplay and noisy phone video are commonly 2-3x that.
-    public const double RoughBitsPerPixel = 0.03;
+    // Score bands: budget / bitrate needed for CRF-32 quality, judged by mean VMAF (Good >= 95, slightly soft >= 90,
+    // noticeably blocky >= 80). Chosen so no validation encode got a better label than it measured: clips with the same
+    // score landed up to a band apart, so the labels err pessimistic near the edges.
+    public const double GoodScore = 0.65, SoftenedScore = 0.35;
+    public const double BlockyScore = 0.15; // PROVISIONAL: no data below 0.3
+    // Measured: 720p/480p from the source needed pixels^0.50-0.71 (median 0.64) of the bits; 60 -> 30 fps needed
+    // 0.59-0.71 (mean 0.64 = 0.5^0.65). Screen recordings are the exception and are left to the sample analysis.
+    public const double PixelExponent = 0.65, FrameRateExponent = 0.65;
+    // Without sample encodes: median bits per pixel per frame CRF 32 needed across the calibration clips. The range was
+    // 0.007 (screen recording) to 0.18 (1440p60 gameplay), so this really is rough.
+    public const double RoughBitsPerPixel = 0.045;
     // Sintel benchmark, CRF 32: preset 4 = 4.74 MB, 6 = 5.22 MB, 8 = 5.89 MB. Analysis encodes at preset 8.
     public static double PresetFactor(int speed) => speed <= 4 ? 0.805 : speed <= 6 ? 0.886 : 1.0;
 
-    /// <summary>PROVISIONAL quality floor per strategy (minimum score); retries stop below it.</summary>
+    /// <summary>
+    /// Quality floor per strategy (minimum score); retries stop below it. Best Quality stops where clips started measuring
+    /// "noticeably blocky" (score ~0.3); the lower floors are PROVISIONAL, below the measured range.
+    /// </summary>
     public static double FloorScore(DiscordStrategy s) => s switch
     {
-        DiscordStrategy.BestQuality => 0.45, DiscordStrategy.Balanced => 0.3, _ => 0.25,
+        DiscordStrategy.BestQuality => 0.35, DiscordStrategy.Balanced => 0.25, _ => 0.2,
     };
 
     static double AcceptScore(DiscordStrategy s) => s == DiscordStrategy.BestQuality ? GoodScore : SoftenedScore;

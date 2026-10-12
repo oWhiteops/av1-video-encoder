@@ -90,7 +90,8 @@ public class SizePlannerTests
     [Fact]
     public void FrameRateDropsOnlyAfterResolutionStepsDownTo720p()
     {
-        // Needs 5x the budget at 1080p60. With the provisional exponents: 720p60 scores 0.37, 1080p30 0.28, 720p30 0.52.
+        // Needs 5x the budget at 1080p60. With the calibrated exponents: 720p60 scores 0.34, 1080p30 0.31, 720p30 0.53
+        // (accepted from 0.35).
         var media = Media(1920, 1080, 60, 60);
         var budget = SizePlanner.Plan(new(media, Free, DiscordStrategy.Balanced) { Complexity = Measured(1) }).VideoKbps;
         double needed1080p60 = budget * 5 / SizePlanner.PresetFactor(6);
