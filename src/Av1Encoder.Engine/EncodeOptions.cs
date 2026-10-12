@@ -62,6 +62,8 @@ public sealed record EncodeRequest
     public IReadOnlyList<int>? AudioStreamIndexes { get; init; }
     /// <summary>Downmix tracks with more than two channels to stereo.</summary>
     public bool DownmixToStereo { get; init; }
+    /// <summary>Two-pass SVT-AV1 when a bitrate is set: lands much closer to the target size than one pass.</summary>
+    public bool TwoPass { get; init; }
 
     /// <summary>Length of the output: the trimmed range, or the whole source.</summary>
     public TimeSpan OutputDuration(MediaInfo media)
@@ -82,6 +84,8 @@ public sealed record EncodeResult(
     string OutputPath, long InputBytes, long OutputBytes, TimeSpan EncodeTime, VideoEncoder EncoderUsed,
     bool FellBackToSoftware, IReadOnlyList<string> Warnings, MediaInfo Output)
 {
+    /// <summary>Encode attempts it took (size-targeted encodes may retry).</summary>
+    public int Attempts { get; init; } = 1;
     public long SavedBytes => InputBytes - OutputBytes;
     public double SavedPercent => InputBytes > 0 ? 100.0 * SavedBytes / InputBytes : 0;
 }

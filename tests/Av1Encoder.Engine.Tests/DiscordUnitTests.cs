@@ -108,6 +108,49 @@ public class DiscordArgumentsTests
     }
 
     [Fact]
+    public void FirstPassOnlyAnalysesVideo()
+    {
+        var r = Request with { Quality = Request.Quality with { VideoBitrateKbps = 2000 }, TwoPass = true };
+        var p1 = FfmpegArguments.Build(Media(), r, VideoEncoder.SvtAv1, "o.partial", 1, @"C:\out\x.passlog");
+        Assert.Equal("1", After(p1, "-pass"));
+        Assert.Equal(@"C:\out\x.passlog", After(p1, "-passlogfile"));
+        Assert.Equal("null", After(p1, "-f"));
+        Assert.Equal("-", p1[^1]);
+        Assert.Contains("-an", p1);
+        Assert.DoesNotContain("0:1", p1);   // no audio mapped
+        Assert.Equal("2000k", After(p1, "-b:v"));
+
+        var p2 = FfmpegArguments.Build(Media(), r, VideoEncoder.SvtAv1, "o.partial", 2, @"C:\out\x.passlog");
+        Assert.Equal("2", After(p2, "-pass"));
+        Assert.Contains("0:1", p2);
+        Assert.Equal("o.partial", p2[^1]);
+    }
+
+    [Fact]
+    public void FirstPassShareGrowsWithFasterPresets() =>
+        Assert.True(EncodeJob.Pass1Share(4) < EncodeJob.Pass1Share(6) && EncodeJob.Pass1Share(6) <= EncodeJob.Pass1Share(8));
+
+    [Fact]
+    public void RetryScalesOnlyTheVideoShare()
+    {
+        // 60 s, 128 kbps audio = 960,000 bytes of audio. Attempt at 2000 kbps came out 10% over a 16 MB aim.
+        var d = TimeSpan.FromSeconds(60);
+        int next = SizeTargeting.NextVideoKbps(2000, 17_600_000, 16_000_000, 128, d);
+        double videoActual = 17_600_000 - 960_000, videoAim = 16_000_000 - 960_000;
+        Assert.Equal((int)Math.Floor(2000 * videoAim / videoActual * 0.97), next);
+        Assert.True(next < 2000.0 * 16_000_000 / 17_600_000, "must cut deeper than scaling the whole file");
+    }
+
+    [Fact]
+    public void BudgetForDefaultDiscordTargetLeavesTheMargin()
+    {
+        const long limit = 19_922_944;
+        int kbps = SizeTargeting.CalculateVideoBitrateKbps(limit, TimeSpan.FromSeconds(60), 96, 0.96);
+        Assert.True((kbps + 96) * 1000 / 8.0 * 60 <= limit * 0.96);
+        Assert.InRange(kbps, 2400, 2500);
+    }
+
+    [Fact]
     public void AudioBudgetCountsOnlyKeptTracks()
     {
         var m = Media(audio: [new AudioStreamInfo(1, "aac", 2, null, 48000, null, null), new AudioStreamInfo(2, "aac", 2, null, 48000, null, null)]);

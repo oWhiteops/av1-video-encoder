@@ -67,7 +67,8 @@ public static class FfmpegArguments
         return filters;
     }
 
-    public static List<string> Build(MediaInfo media, EncodeRequest request, VideoEncoder encoder, string outputPath)
+    /// <param name="pass">0 = single pass; 1 = analysis pass (writes only <paramref name="passLog"/>); 2 = final pass.</param>
+    public static List<string> Build(MediaInfo media, EncodeRequest request, VideoEncoder encoder, string outputPath, int pass = 0, string? passLog = null)
     {
         var video = media.Video ?? throw new EncodeException("This file does not contain a video stream.");
         bool mp4 = request.Container == OutputContainer.Mp4;
@@ -90,6 +91,12 @@ public static class FfmpegArguments
         ]);
         if (VideoFilters(video, request) is { Count: > 0 } filters) args.AddRange(["-vf", string.Join(",", filters)]);
         args.AddRange(VideoCodecArgs(video, q, encoder, request.SvtParams));
+        if (pass > 0) args.AddRange(["-pass", $"{pass}", "-passlogfile", passLog ?? throw new ArgumentNullException(nameof(passLog))]);
+        if (pass == 1)
+        {
+            args.AddRange(["-an", "-sn", "-dn", "-f", "null", "-"]);
+            return args;
+        }
 
         int audioIdx = 0;
         foreach (var a in KeptAudio(media, request))

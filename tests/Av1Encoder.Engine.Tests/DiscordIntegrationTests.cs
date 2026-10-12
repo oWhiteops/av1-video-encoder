@@ -93,6 +93,150 @@ public class DiscordIntegrationTests(Samples s)
         Assert.Equal(2, Assert.Single(downmixed.Output.Audio).Channels);
     }
 
+    /// <summary>720p30, 10 s, noisy enough that bitrate control has real work to do.</summary>
+    string Noisy => s.Get("noisy720.mkv", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=10,noise=alls=10:allf=t",
+        "-f", "lavfi", "-i", "sine=d=10", "-c:v", "ffv1", "-c:a", "pcm_s16le");
+
+    static EncodeRequest TwoPass(string input, string output) => new()
+    {
+        InputPath = input, OutputPath = output, Quality = new QualitySettings(32, 8, 26), TwoPass = true, AudioBitrateKbps = 96,
+    };
+
+    [Fact]
+    public async Task TwoPassLandsCloseUnderTheTargetAndCleansUp()
+    {
+        var media = await MediaProbe.ProbeAsync(s.Tools, Noisy);
+        var output = Out("twopass.mp4");
+        const long limit = 2_000_000;
+        var stages = new List<EncodeProgress>();
+        var result = await SizeTargeting.EncodeToSizeAsync(s.Tools, TwoPass(Noisy, output), media, limit,
+            progress: new SyncProgress<EncodeProgress>(stages.Add), margin: 0.04);
+        Assert.InRange(result.OutputBytes, (long)(limit * 0.85), limit);
+        Assert.Equal(1, result.Attempts);
+        Assert.Contains(stages, p => p.Stage.Contains("pass 1 of 2"));
+        Assert.Contains(stages, p => p.Stage.Contains("pass 2 of 2"));
+        var fractions = stages.Select(p => p.Fraction).ToList();
+        Assert.Equal(fractions.OrderBy(f => f), fractions);   // monotonic across both passes
+        Assert.Empty(TempFiles(Path.GetDirectoryName(output)!));
+    }
+
+    [Theory]
+    [InlineData("pass 1 of 2")]
+    [InlineData("pass 2 of 2")]
+    public async Task CancellingDuringEitherPassLeavesNothingBehind(string stage)
+    {
+        var input = s.Get("long.mkv", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=30", "-c:v", "ffv1");
+        var media = await MediaProbe.ProbeAsync(s.Tools, input);
+        var output = Out("cancel2pass.mp4");
+        var request = TwoPass(input, output) with { Quality = new QualitySettings(32, 6, 26, VideoBitrateKbps: 1500) };
+        using var cts = new CancellationTokenSource();
+        var reached = new TaskCompletionSource();
+        var run = new EncodeJob(s.Tools, request, media).RunAsync(
+            new SyncProgress<EncodeProgress>(p => { if (p.Stage.Contains(stage)) reached.TrySetResult(); }), cts.Token);
+        await reached.Task.WaitAsync(TimeSpan.FromSeconds(90));
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+        Assert.False(File.Exists(output));
+        Assert.Empty(TempFiles(Path.GetDirectoryName(output)!));
+    }
+
+    [Fact]
+    public async Task QualityFloorStopsBeforeAnyEncode()
+    {
+        var media = await MediaProbe.ProbeAsync(s.Tools, Noisy);
+        var output = Out("floor.mp4");
+        var ex = await Assert.ThrowsAsync<TargetUnreachableException>(() =>
+            SizeTargeting.EncodeToSizeAsync(s.Tools, TwoPass(Noisy, output), media, 2_000_000, floorKbps: 5000));
+        Assert.Equal(0, ex.Attempts);
+        Assert.Equal(5000, ex.FloorKbps);
+        Assert.Contains("quality floor", ex.Message);
+        Assert.False(Directory.Exists(Path.GetDirectoryName(output)) && Directory.EnumerateFileSystemEntries(Path.GetDirectoryName(output)!).Any());
+    }
+
+    // A negative margin aims 50% over the limit, which forces every attempt to come out too large: the only way to
+    // exercise the retry paths deterministically.
+    [Fact]
+    public async Task RetryStopsAtTheQualityFloorInsteadOfUsingAllAttempts()
+    {
+        var media = await MediaProbe.ProbeAsync(s.Tools, Noisy);
+        const long limit = 2_000_000;
+        int first = SizeTargeting.CalculateVideoBitrateKbps(limit, media.Duration, 96, 1.5);
+        var ex = await Assert.ThrowsAsync<TargetUnreachableException>(() =>
+            SizeTargeting.EncodeToSizeAsync(s.Tools, TwoPass(Noisy, Out("floor-retry.mp4")), media, limit, margin: -0.5, floorKbps: first - 10));
+        Assert.Equal(1, ex.Attempts);
+        Assert.True(ex.LastAttemptBytes > limit);
+        Assert.True(ex.NeededKbps < ex.FloorKbps);
+    }
+
+    [Fact]
+    public async Task ExhaustedAttemptsKeepTheExistingFileAndLeaveNoTemps()
+    {
+        var media = await MediaProbe.ProbeAsync(s.Tools, Noisy);
+        var output = Out("exhausted.mp4");
+        Directory.CreateDirectory(Path.GetDirectoryName(output)!);
+        File.WriteAllText(output, "keep me");
+        var log = new List<string>();
+        var ex = await Assert.ThrowsAsync<TargetUnreachableException>(() => SizeTargeting.EncodeToSizeAsync(s.Tools,
+            TwoPass(Noisy, output) with { OverwriteExisting = true }, media, 2_000_000, log: log.Add, margin: -0.5));
+        Assert.Equal(3, ex.Attempts);
+        Assert.Contains("after 3 attempts", ex.Message);
+        Assert.Equal(3, log.Count(l => l.StartsWith("Size target")));
+        Assert.Equal("keep me", File.ReadAllText(output));
+        Assert.Empty(TempFiles(Path.GetDirectoryName(output)!));
+    }
+
+    /// <summary>640x360 @ 30 fps: 10 s of clean test pattern, then 10 s of heavy noise.</summary>
+    string CalmThenNoisy => s.Get("calm-noisy.mkv", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=10", "-f", "lavfi", "-i", "testsrc2=s=640x360:r=30:d=10,noise=alls=25:allf=t",
+        "-filter_complex", "[0:v][1:v]concat=n=2:v=1[v]", "-map", "[v]", "-c:v", "ffv1");
+
+    [Fact]
+    public async Task AnalysisMeasuresOnlyTheSelectedRangeAndCleansUp()
+    {
+        var media = await MediaProbe.ProbeAsync(s.Tools, CalmThenNoisy);
+        var before = Directory.GetFiles(Path.GetTempPath(), "av1-analysis-*").Length;
+        var steps = new List<double>();
+        var calm = await SizeTargeting.AnalyzeAsync(s.Tools, media, null, TimeSpan.FromSeconds(9.5), new SyncProgress<double>(steps.Add));
+        var noisy = await SizeTargeting.AnalyzeAsync(s.Tools, media, TimeSpan.FromSeconds(10.5), null);
+        Assert.False(calm.IsRough);
+        Assert.True(noisy.Crf32Kbps > 3 * calm.Crf32Kbps, $"noisy {noisy.Crf32Kbps:0} vs calm {calm.Crf32Kbps:0} kbps");
+        Assert.Equal(3, steps.Count);
+        Assert.Equal(1.0, steps[^1]);
+        Assert.True(calm.PeakCrf32Kbps >= calm.Crf32Kbps);
+        Assert.Equal(before, Directory.GetFiles(Path.GetTempPath(), "av1-analysis-*").Length);
+    }
+
+    [Fact]
+    public async Task ShortSelectionIsAnalysedWhole()
+    {
+        var media = await MediaProbe.ProbeAsync(s.Tools, s.Basic);   // 4 s
+        var steps = new List<double>();
+        var estimate = await SizeTargeting.AnalyzeAsync(s.Tools, media, null, null, new SyncProgress<double>(steps.Add));
+        Assert.Equal([1.0], steps);
+        Assert.True(estimate.Crf32Kbps > 0);
+    }
+
+    [Fact]
+    public async Task AnalysisCanBeCancelled()
+    {
+        var media = await MediaProbe.ProbeAsync(s.Tools, CalmThenNoisy);
+        using var cts = new CancellationTokenSource();
+        var run = SizeTargeting.AnalyzeAsync(s.Tools, media, null, null, new SyncProgress<double>(_ => cts.Cancel()), cts.Token);
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => run);
+    }
+
+    [Fact]
+    public void BundledFfmpegIsTheCalibratedBuild()
+    {
+        // Size accuracy, pass-1 timing and the planner's constants were measured on this exact build. If FFmpeg is
+        // refreshed, re-run the accuracy matrix and calibration (docs/DESIGN.md), then update these strings.
+        var version = File.ReadAllLines(Path.Combine(s.Tools.Directory, "..", "VERSION.txt")).Single(l => l.StartsWith("Version:"));
+        Assert.Contains("ffmpeg version n8.1.3-17-gc389840894-20261010", version);
+        var (_, _, err) = Samples.Run(s.Tools.FfmpegPath, ["-hide_banner", "-f", "lavfi", "-i", "color=s=64x64:d=0.1", "-c:v", "libsvtav1", "-f", "null", "-"]);
+        Assert.Contains("SVT-AV1 Encoder Lib v4.2.0-151-g5ed9ffbcb", err);
+        var (_, stdout, _) = Samples.Run(s.Tools.FfmpegPath, ["-hide_banner", "-version"]);
+        Assert.Contains(version["Version: ".Length..].Split(' ')[2], stdout);
+    }
+
     [Fact]
     public async Task LeftoverPassLogsFromAKilledRunAreRemoved()
     {

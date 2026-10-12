@@ -23,7 +23,8 @@ Av1Encoder.App (WPF)           Av1Encoder.Engine (net10.0, no UI)
   AppSettings / AppLog           EncodeJob         preflight → temp file → FFmpeg → verify → move into place
                                  FfmpegProcess     process, -progress parsing, pause/resume, job object
                                  HardwareDetector  real test encodes per GPU encoder
-                                 SizeTargeting     bitrate from size budget, verify, retry (Video to Discord)
+                                 SizeTargeting     size-limited encode, retries, quality floor, sample analysis
+                                 SizePlanner       Discord recommendations (pure)
 ```
 
 - **One job = one file.** `EncodeJob` holds nothing but its running process, so batch processing is a loop
@@ -124,29 +125,102 @@ defaults live in `QualitySettings.For` and can be overridden without a rebuild v
 `settings.json`. SVT-AV1 runs with its default tune (VMAF/PSNR-oriented); `SvtParams` (e.g. `"tune=0"`)
 allows experimenting with SVT-AV1's subjective tune.
 
-## Future: Video to Discord
+## Video to Discord mode (engine)
 
-The engine already exposes what that app needs, and it is covered by a test:
+Encodes to a byte-exact size limit (default 19 MiB = 19,922,944 bytes, under Discord's 20 MB free limit whether
+that means 20,000,000 bytes or 20 MiB). The flow:
 
 ```csharp
-var tools = FfmpegTools.Locate();
 var media = await MediaProbe.ProbeAsync(tools, input);
-var request = new EncodeRequest
-{
-    InputPath = input, OutputPath = output,
-    Quality = QualitySettings.For(QualityPreset.Balanced), // speed preset still applies
-    AudioBitrateKbps = 96,                                 // known audio cost per track
-};
-// Computes video kbps = budget × 0.95 − audio, encodes (VBR), checks the real size,
-// lowers the bitrate in proportion and retries (default 3 attempts). Never returns a file over the limit.
-var result = await SizeTargeting.EncodeToSizeAsync(tools, request, media, maxBytes: 10 * 1024 * 1024);
+var complexity = await SizeTargeting.AnalyzeAsync(tools, media, trimStart, trimEnd);   // optional, seconds
+var input = new PlanInput(media, 19_922_944, DiscordStrategy.Balanced) { Complexity = complexity, TrimStart = trimStart, TrimEnd = trimEnd };
+var plan = SizePlanner.Plan(input);                       // resolution, fps, audio, score, advice, warnings
+var request = plan.Apply(new EncodeRequest { InputPath = input, OutputPath = output, Quality = QualitySettings.For(QualityPreset.Balanced) }, input);
+var result = await SizeTargeting.EncodeToSizeAsync(tools, request, media, 19_922_944,
+    margin: plan.Settings.Margin, floorKbps: plan.FloorKbps); // TargetUnreachableException when it can't
 ```
 
-- `SizeTargeting.CalculateVideoBitrateKbps(maxBytes, duration, audioKbps)` is exposed for showing an
-  up-front estimate.
-- The output is AV1 in MP4 with AAC, which Discord previews inline.
-- Possible later additions there: two-pass encoding for tighter targets, and downscaling when the bitrate
-  per pixel gets too low. Both are left out until that app exists.
+| Strategy | SVT preset | Passes | Margin | Audio |
+|---|---|---|---|---|
+| Best Quality | 4 | 2 | 4% | 128 kbps |
+| Balanced | 6 | 2 | 4% | 96 kbps |
+| Fastest | 8 | 1 | 8% | 96 kbps |
+
+Presets ≥ 10 are avoided: SVT-AV1 logs "Non-RTC M10+ are meant for automation tooling usage. Visual artifacts may occur."
+
+### Size accuracy (measured with the bundled build)
+
+Single-pass VBR vs two-pass, scratch tests:
+
+| Clip (target) | 1-pass | 2-pass | CRF 30 + `mbr` cap |
+|---|---|---|---|
+| Noisy 1080p60, 20 s (5.00 MB) | −20 to −24% | +3.0% | — |
+| Clean 720p30, 30 s (2.25 MB) | +5.2% | +0.7% | +27% (not a hard cap) |
+
+Pass 1 takes 18% / 35% / 40% of a two-pass encode at preset 4 / 6 / 8 (20 s 1080p60). Pass-1 stats differ by
+target bitrate; reusing them for a retry at 80% of the bitrate still landed within 0.2% of a fresh two-pass, but
+retries re-run pass 1 anyway (correct by construction, ~7-9 s per retry on this clip).
+
+Accuracy matrix (`RUN_ACCURACY=1 dotnet test --filter AccuracyMatrixTests`, 20 s synthetic 720p60 clips, 12-core desktop CPU). Every output stayed under its limit on the first attempt:
+
+| Source | Strategy | Limit (bytes) | Output (bytes) | Of limit | Attempts | Time (s) |
+| --- | --- | --- | --- | --- | --- | --- |
+| easy 720p60 | BestQuality | 1,500,000 | 1,452,318 | 96.8% | 1 | 26 |
+| easy 720p60 | BestQuality | 3,000,000 | 2,875,794 | 95.9% | 1 | 34 |
+| easy 720p60 | BestQuality | 6,000,000 | 5,727,345 | 95.5% | 1 | 40 |
+| easy 720p60 | Balanced | 1,500,000 | 1,464,822 | 97.7% | 1 | 10 |
+| easy 720p60 | Balanced | 3,000,000 | 2,899,876 | 96.7% | 1 | 11 |
+| easy 720p60 | Balanced | 6,000,000 | 5,753,145 | 95.9% | 1 | 12 |
+| easy 720p60 | Fastest | 1,500,000 | 1,449,214 | 96.6% | 1 | 4 |
+| easy 720p60 | Fastest | 3,000,000 | 2,889,233 | 96.3% | 1 | 5 |
+| easy 720p60 | Fastest | 6,000,000 | 5,811,724 | 96.9% | 1 | 5 |
+| noisy 720p60 | BestQuality | 1,500,000 | 1,292,817 | 86.2% | 1 | 20 |
+| noisy 720p60 | BestQuality | 3,000,000 | 2,492,093 | 83.1% | 1 | 23 |
+| noisy 720p60 | BestQuality | 6,000,000 | 5,596,516 | 93.3% | 1 | 26 |
+| noisy 720p60 | Balanced | 1,500,000 | 1,334,672 | 89.0% | 1 | 11 |
+| noisy 720p60 | Balanced | 3,000,000 | 2,549,987 | 85.0% | 1 | 12 |
+| noisy 720p60 | Balanced | 6,000,000 | 5,734,525 | 95.6% | 1 | 12 |
+| noisy 720p60 | Fastest | 1,500,000 | 1,083,471 | 72.2% | 1 | 5 |
+| noisy 720p60 | Fastest | 3,000,000 | 2,245,165 | 74.8% | 1 | 5 |
+| noisy 720p60 | Fastest | 6,000,000 | 4,041,771 | 67.4% | 1 | 5 |
+| calm then noisy 720p60 | BestQuality | 1,500,000 | 1,153,012 | 76.9% | 1 | 22 |
+| calm then noisy 720p60 | BestQuality | 3,000,000 | 2,354,839 | 78.5% | 1 | 26 |
+| calm then noisy 720p60 | BestQuality | 6,000,000 | 4,188,126 | 69.8% | 1 | 28 |
+| calm then noisy 720p60 | Balanced | 1,500,000 | 1,135,797 | 75.7% | 1 | 11 |
+| calm then noisy 720p60 | Balanced | 3,000,000 | 2,375,269 | 79.2% | 1 | 12 |
+| calm then noisy 720p60 | Balanced | 6,000,000 | 4,163,573 | 69.4% | 1 | 12 |
+| calm then noisy 720p60 | Fastest | 1,500,000 | 1,061,159 | 70.7% | 1 | 4 |
+| calm then noisy 720p60 | Fastest | 3,000,000 | 2,034,231 | 67.8% | 1 | 4 |
+| calm then noisy 720p60 | Fastest | 6,000,000 | 3,960,776 | 66.0% | 1 | 4 |
+
+Open finding: on noisy and variable-complexity synthetic content two-pass **undershoots** (69-89% of the limit), leaving quality unused; clean content lands at 96-98%. Synthetic temporal noise is a worst case, so this is re-measured on real footage in the calibration study before deciding whether an "undershoot" retry is worth its cost (it would need the first result kept as a temp file rather than finalized). One-pass (Fastest) undershoots as expected.
+
+### File safety
+
+- Every attempt writes `<output>.<guid>.partial` (+ `<output>.<guid>.passlog-0.log` for two-pass) beside the output.
+- `EncodeRequest.MaxOutputBytes` is checked on the temp file before it is moved into place; an oversized result is
+  deleted and `OutputTooLargeException` is thrown. The destination, and any file already there, is only ever
+  replaced by an output that passed every check. Retries do not force overwriting.
+- Temp files and pass logs are deleted on success, failure and cancel; leftovers from a hard kill are swept on the
+  next encode to the same name. The window waits up to 15 s for cleanup when closed mid-encode.
+
+### Retries and the quality floor
+
+At most 3 attempts. After an oversized attempt only the video share is rescaled (audio is a fixed cost):
+`next = kbps × (aim − audio) / (actual − audio) × 0.97`. Each strategy has a quality floor (`SizePlanner.FloorScore`);
+when the next attempt would fall below it, encoding stops with `TargetUnreachableException` and the UI offers the
+planner's alternatives instead of a worse file.
+
+### Recommendations (provisional until calibrated)
+
+`SizeTargeting.AnalyzeAsync` encodes three 2 s samples (at 20/50/80% of the selection; a short selection whole) at
+CRF 32, preset 8, source size, and reports the kbps they needed. `SizePlanner` scores each candidate as
+`video budget / needed kbps`, with needed kbps scaled by pixels^0.75, frame rate^0.5 and a preset factor, then
+walks the ladder: original → 1080p → 720p at the source frame rate, then the same at 30 fps, then 480p.
+
+All of these constants are **provisional** (marked in `SizePlanner.cs`): the score bands, floors, exponents,
+the rough bits-per-pixel fallback, and the sample-vs-full-encode bias. They come from one clean clip (Sintel)
+and must be replaced by the calibration and validation study on real footage before release.
 
 ## Licensing summary
 
