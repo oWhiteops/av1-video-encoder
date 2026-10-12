@@ -36,6 +36,29 @@ it does this.
 Settings (preset, folder, encoder, audio) are remembered in `%LOCALAPPDATA%\AV1 Video Encoder\settings.json`.
 The log is under **View log**, and on disk in `%LOCALAPPDATA%\AV1 Video Encoder\logs\app.log`.
 
+## Video to Discord
+
+Switch to **Video to Discord** at the top of the window to fit a video under an upload limit.
+
+1. Drop a video in. A quick quality check runs in the background (a few seconds; **Cancel** or **Skip** it at
+   any time, or tick *Skip the quality check* to turn it off).
+2. Pick the size limit: **Discord Free (19 MB)**, or **Custom** for a larger limit such as a Nitro account's.
+   MB here means the same MB Explorer shows; the exact byte count is shown beside it. 19 MB stays safely under
+   Discord's free 20 MB limit (an upload test accepted 20.4 MB and rejected 21.6 MB).
+3. Pick a priority: **Best Quality** (slowest), **Balanced** (default) or **Fastest**.
+4. Read the recommendation. It says what it will keep or lower (resolution, frame rate) and how the result will
+   likely look, and suggests trimming when that would keep much more quality. Quality is an estimate, never a
+   promise.
+5. Optionally set **Start** and **End** to keep only part of the video (nothing is cut unless you change them),
+   or override resolution, frame rate and audio under *Adjust*.
+6. Press **Start**. The output is MP4, named `<name>_discord.mp4`. Its real size is checked before it is saved;
+   if it is over the limit the app retries with a lower bitrate (at most 3 attempts) and never saves a file that
+   doesn't fit. If the limit can't be met without very blocky video, it stops and suggests alternatives, or you
+   can choose **Encode anyway at lower quality**.
+
+Only the main audio track is kept (downmixed to stereo when it has more channels); the app lists any tracks it
+leaves out. HDR videos get a warning: colours may look washed out on most screens.
+
 ## Building
 
 Requirements: Windows 10/11 x64, the [.NET 10 SDK](https://dot.net), internet access for the first build
@@ -63,7 +86,7 @@ scripts\benchmark.ps1 -InputFile clip.mp4    # size / speed / VMAF grid used to 
 
 | Path | What |
 |---|---|
-| `src/Av1Encoder.Engine` | UI-independent encoding engine (probe, argument building, FFmpeg process, verification, hardware detection, size targeting). Reusable by the planned "Video to Discord" app. |
+| `src/Av1Encoder.Engine` | UI-independent encoding engine (probe, argument building, FFmpeg process, verification, hardware detection, size targeting, Discord recommendations). |
 | `src/Av1Encoder.App` | WPF desktop app (Fluent theme, follows Windows light/dark mode). |
 | `tests/Av1Encoder.Engine.Tests` | xUnit tests: pure logic plus integration tests that encode synthetic clips. |
 | `scripts/` | FFmpeg fetch, build/publish, benchmark. |
