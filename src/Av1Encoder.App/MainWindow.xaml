@@ -83,6 +83,22 @@
                     <Button Content="View log" HorizontalAlignment="Right" VerticalAlignment="Top" Click="OnShowLog" />
                 </Grid>
 
+                <!-- Mode -->
+                <UniformGrid Columns="2" Margin="0,0,-8,16" IsEnabled="{Binding CanEdit}">
+                    <RadioButton Style="{StaticResource PresetCard}" GroupName="Mode" IsChecked="{Binding IsCompressMode}" AutomationProperties.Name="Compress mode">
+                        <StackPanel>
+                            <TextBlock Text="Compress" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Make a video smaller at a chosen quality." />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton Style="{StaticResource PresetCard}" GroupName="Mode" IsChecked="{Binding IsDiscordMode}" AutomationProperties.Name="Video to Discord mode">
+                        <StackPanel>
+                            <TextBlock Text="Video to Discord" FontWeight="SemiBold" />
+                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Fit a video under an upload size limit." />
+                        </StackPanel>
+                    </RadioButton>
+                </UniformGrid>
+
                 <!-- Error -->
                 <Border CornerRadius="8" Padding="16,12" Margin="0,0,0,12" BorderThickness="1"
                         Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
@@ -91,6 +107,8 @@
                     <DockPanel>
                         <TextBlock DockPanel.Dock="Left" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xEA39;" FontSize="16"
                                    Foreground="{DynamicResource SystemFillColorCriticalBrush}" Margin="0,1,12,0" VerticalAlignment="Top" />
+                        <Button DockPanel.Dock="Bottom" HorizontalAlignment="Left" Margin="0,10,0,0" Content="Encode anyway at lower quality"
+                                Click="OnEncodeAnyway" Visibility="{Binding CanEncodeAnyway, Converter={StaticResource Vis}}" />
                         <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
                     </DockPanel>
                 </Border>
@@ -175,15 +193,134 @@
                         </DockPanel>
                         <UniformGrid Columns="3">
                             <StackPanel Margin="0,0,12,0"><TextBlock Text="Final size" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultSize}" Style="{StaticResource StatValue}" /></StackPanel>
-                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Saved" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultSaved}" Style="{StaticResource StatValue}" /></StackPanel>
-                            <StackPanel><TextBlock Text="Encoding time" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultTime}" Style="{StaticResource StatValue}" /></StackPanel>
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="{Binding ResultSavedLabel}" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultSaved}" Style="{StaticResource StatValue}" /></StackPanel>
+                            <StackPanel><TextBlock Text="{Binding ResultTimeLabel}" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultTime}" Style="{StaticResource StatValue}" /></StackPanel>
                         </UniformGrid>
                         <TextBlock Style="{StaticResource Secondary}" Margin="0,12,0,0" Text="{Binding ResultNotes}"
                                    Visibility="{Binding HasResultNotes, Converter={StaticResource Vis}}" />
                     </StackPanel>
                 </Border>
+                <!-- Discord -->
+                <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEdit}" Visibility="{Binding IsDiscordMode, Converter={StaticResource Vis}}">
+                    <StackPanel>
+                        <TextBlock Text="Discord upload" Style="{StaticResource CardTitle}" />
+
+                        <TextBlock Text="Size limit" Style="{StaticResource StatLabel}" Margin="0,0,0,6" />
+                        <WrapPanel>
+                            <RadioButton GroupName="Target" Content="Discord Free (19 MB)" IsChecked="{Binding UseFreeTarget}" VerticalAlignment="Center" Margin="0,0,20,0" />
+                            <RadioButton GroupName="Target" Content="Custom" IsChecked="{Binding UseCustomTarget}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBox Width="90" Text="{Binding CustomTargetText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding UseCustomTarget}"
+                                     AutomationProperties.Name="Custom size limit in MB" VerticalAlignment="Center" />
+                            <TextBlock Text="MB" VerticalAlignment="Center" Margin="6,0,16,0" />
+                            <TextBlock Text="{Binding TargetBytesText}" Style="{StaticResource StatLabel}" VerticalAlignment="Center" />
+                        </WrapPanel>
+                        <TextBlock Text="{Binding SizeLine}" Style="{StaticResource Secondary}" Margin="0,8,0,0" />
+
+                        <TextBlock Text="Priority" Style="{StaticResource StatLabel}" Margin="0,16,0,6" />
+                        <UniformGrid Columns="3" Margin="0,0,-8,0">
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsBestStrategy}">
+                                <StackPanel>
+                                    <TextBlock Text="Best Quality" FontWeight="SemiBold" />
+                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Sharpest result. Slowest; suggests trimming first." />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsBalancedStrategy}">
+                                <StackPanel>
+                                    <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold" />
+                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Good quality at a reasonable speed." />
+                                </StackPanel>
+                            </RadioButton>
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsFastestStrategy}">
+                                <StackPanel>
+                                    <TextBlock Text="Fastest" FontWeight="SemiBold" />
+                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Quickest encode; a little softer." />
+                                </StackPanel>
+                            </RadioButton>
+                        </UniformGrid>
+
+                        <!-- Quality check -->
+                        <DockPanel Margin="0,16,0,0">
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding IsAnalyzing, Converter={StaticResource Vis}}">
+                                <Button Content="Cancel" Click="OnCancelAnalysis" Margin="8,0,0,0" />
+                                <Button Content="Skip" Click="OnSkipAnalysis" Margin="8,0,0,0" ToolTip="Stop and don't check future videos" />
+                            </StackPanel>
+                            <StackPanel>
+                                <TextBlock Text="{Binding AnalysisStatus}" Style="{StaticResource Secondary}" />
+                                <ProgressBar Value="{Binding AnalysisPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0"
+                                             Visibility="{Binding IsAnalyzing, Converter={StaticResource Vis}}" />
+                            </StackPanel>
+                        </DockPanel>
+                        <CheckBox Content="Skip the quality check (faster, rougher recommendations)" IsChecked="{Binding SkipQualityAnalysis}" Margin="0,8,0,0" />
+
+                        <!-- Recommendation -->
+                        <Border CornerRadius="8" Padding="16,12" Margin="0,16,0,0" BorderThickness="1"
+                                Visibility="{Binding HasPlan, Converter={StaticResource Vis}}">
+                            <Border.Style>
+                                <Style TargetType="Border">
+                                    <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+                                    <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding PlanIsRisky}" Value="True">
+                                            <Setter Property="Background" Value="{DynamicResource SystemFillColorCautionBackgroundBrush}" />
+                                            <Setter Property="BorderBrush" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Border.Style>
+                            <StackPanel>
+                                <TextBlock Text="{Binding PlanHeadline}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding PlanSummary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                <TextBlock Text="{Binding PlanAdvice}" Style="{StaticResource Secondary}" Margin="0,8,0,0"
+                                           Visibility="{Binding HasPlanAdvice, Converter={StaticResource Vis}}" />
+                                <TextBlock Text="{Binding PlanWarnings}" Style="{StaticResource Secondary}" Margin="0,8,0,0"
+                                           Visibility="{Binding HasPlanWarnings, Converter={StaticResource Vis}}" />
+                            </StackPanel>
+                        </Border>
+                        <TextBlock Text="{Binding PlanError}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,12,0,0"
+                                   Visibility="{Binding HasPlanError, Converter={StaticResource Vis}}" />
+
+                        <!-- Trim -->
+                        <TextBlock Text="Trim" Style="{StaticResource StatLabel}" Margin="0,16,0,6" />
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="24" />
+                                <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+                            <TextBlock Text="Start" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBox Grid.Column="1" Width="100" Text="{Binding TrimStartText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Trim start" />
+                            <TextBlock Grid.Column="3" Text="End" VerticalAlignment="Center" Margin="0,0,8,0" />
+                            <TextBox Grid.Column="4" Width="100" Text="{Binding TrimEndText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Trim end" />
+                            <TextBlock Grid.Column="5" Text="{Binding SelectedDurationText}" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="16,0,0,0" />
+                            <Image Grid.Row="1" Grid.ColumnSpan="2" Source="{Binding StartFrame}" Height="90" HorizontalAlignment="Left" Margin="0,8,0,0" ToolTip="First frame of the selection" />
+                            <Image Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="2" Source="{Binding EndFrame}" Height="90" HorizontalAlignment="Left" Margin="0,8,0,0" ToolTip="Last frame of the selection" />
+                        </Grid>
+                        <TextBlock Text="{Binding TrimError}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
+                                   Visibility="{Binding HasTrimError, Converter={StaticResource Vis}}" />
+                        <TextBlock Style="{StaticResource StatLabel}" Margin="0,6,0,0" Text="Times as m:ss, for example 1:05.5. Nothing is cut unless you change these." />
+
+                        <!-- Overrides -->
+                        <Expander Header="Adjust resolution, frame rate and audio" Margin="0,14,0,0">
+                            <Grid Margin="0,10,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
+                                <TextBlock Text="Resolution" VerticalAlignment="Center" />
+                                <ComboBox Grid.Column="1" ItemsSource="{Binding ResolutionChoices}" SelectedItem="{Binding SelectedResolution}" DisplayMemberPath="Label"
+                                          HorizontalAlignment="Left" MinWidth="240" Margin="0,0,0,8" AutomationProperties.Name="Resolution" />
+                                <TextBlock Grid.Row="1" Text="Frame rate" VerticalAlignment="Center" />
+                                <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding FrameRateChoices}" SelectedItem="{Binding SelectedFrameRate}" DisplayMemberPath="Label"
+                                          HorizontalAlignment="Left" MinWidth="240" Margin="0,0,0,8" AutomationProperties.Name="Frame rate" />
+                                <TextBlock Grid.Row="2" Text="Audio" VerticalAlignment="Center" />
+                                <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AudioChoices}" SelectedItem="{Binding SelectedAudio}" DisplayMemberPath="Label"
+                                          HorizontalAlignment="Left" MinWidth="240" Margin="0,0,0,8" AutomationProperties.Name="Audio" />
+                                <Button Grid.Row="3" Grid.Column="1" Content="Reset to recommended" Click="OnResetOverrides" HorizontalAlignment="Left" />
+                            </Grid>
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
                 <!-- Quality -->
-                <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEdit}">
+                <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEdit}" Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}">
                     <StackPanel>
                         <TextBlock Text="Quality" Style="{StaticResource CardTitle}" />
                         <UniformGrid Columns="3" Margin="0,0,-8,0">

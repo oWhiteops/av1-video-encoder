@@ -33,9 +33,10 @@ public static class SizeTargeting
 
     /// <param name="margin">Share of the limit held back for container overhead and encoder variance.</param>
     /// <param name="floorKbps">Quality floor: no attempt is made below this video bitrate.</param>
+    /// <param name="started">Called with each attempt's job, so a UI can pause and resume it.</param>
     public static async Task<EncodeResult> EncodeToSizeAsync(FfmpegTools tools, EncodeRequest template, MediaInfo media, long maxBytes,
         int maxAttempts = 3, IProgress<EncodeProgress>? progress = null, Action<string>? log = null, CancellationToken ct = default,
-        double margin = 0.05, int floorKbps = MinVideoKbps)
+        double margin = 0.05, int floorKbps = MinVideoKbps, Action<EncodeJob>? started = null)
     {
         // Always re-encode audio here so its bitrate is known rather than whatever the source used.
         var request = template with { AudioBitrateKbps = template.AudioBitrateKbps ?? 128 };
@@ -55,7 +56,9 @@ public static class SizeTargeting
             var attemptProgress = attempt == 1 || progress is null ? progress : new Relabel(progress, $"Attempt {attempt} of {maxAttempts}: ");
             try
             {
-                var result = await new EncodeJob(tools, attemptRequest, media, log).RunAsync(attemptProgress, ct);
+                var job = new EncodeJob(tools, attemptRequest, media, log);
+                started?.Invoke(job);
+                var result = await job.RunAsync(attemptProgress, ct);
                 return result with { Attempts = attempt };
             }
             catch (OutputTooLargeException ex) when (attempt < maxAttempts)

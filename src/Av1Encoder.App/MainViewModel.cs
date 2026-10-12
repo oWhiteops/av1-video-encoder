@@ -12,7 +12,7 @@ public sealed record EncoderOption(VideoEncoder Encoder, string Label);
 
 public sealed record InfoItem(string Label, string Value);
 
-public sealed class MainViewModel : INotifyPropertyChanged
+public sealed partial class MainViewModel : INotifyPropertyChanged
 {
     readonly AppSettings settings = AppSettings.Load();
     FfmpegTools? tools;
@@ -57,7 +57,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public bool IsBusy => State is JobState.Encoding or JobState.Paused or JobState.Probing;
     public bool IsPaused => State == JobState.Paused;
     public bool CanEdit => !IsBusy;
-    public bool CanStart => tools != null && media != null && !IsBusy;
+    public bool CanStart => tools != null && media != null && !IsBusy && (!IsDiscordMode || plan != null);
     public bool ShowProgress => State is JobState.Encoding or JobState.Paused;
     public bool ShowResult => State == JobState.Completed;
     public string StartLabel => State is JobState.Failed or JobState.Cancelled ? "Retry" : State == JobState.Completed ? "Encode again" : "Start";
@@ -100,14 +100,12 @@ public sealed class MainViewModel : INotifyPropertyChanged
             media = info;
             FileName = Path.GetFileName(path);
             FillSourceInfo(info);
-            var ext = FfmpegArguments.PreferredContainer(info) == OutputContainer.Mkv ? ".mkv" : ".mp4";
-            OutputFileName = Path.GetFileNameWithoutExtension(path) + "_av1" + ext;
+            OutputFileName = DefaultOutputName(info, IsDiscordMode);
             if (settings.OutputFolder == null || !Directory.Exists(settings.OutputFolder)) outputFolder = Path.GetDirectoryName(path)!;
             Raise(nameof(OutputFolder));
-            ContainerNote = ext == ".mkv"
-                ? "Saving as MKV because this video has image-based subtitles or attachments that MP4 cannot hold."
-                : "";
+            UpdateContainerNote();
             State = JobState.Ready;
+            OnDiscordMediaLoaded();
             AppLog.Write($"Loaded: {info.FormatName}, {info.Video.Width}x{info.Video.Height}, {info.Duration}, {info.Audio.Count} audio, {info.Subtitles.Count} subtitle stream(s).");
         }
         catch (EncodeException ex)
@@ -117,6 +115,14 @@ public sealed class MainViewModel : INotifyPropertyChanged
             State = media == null ? JobState.Empty : JobState.Ready;
         }
     }
+
+    /// <summary>Discord output is always MP4 (what Discord plays); Compress picks MKV only when MP4 can't hold the streams.</summary>
+    static string DefaultOutputName(MediaInfo m, bool discord) => Path.GetFileNameWithoutExtension(m.Path) +
+        (discord ? "_discord.mp4" : "_av1" + (FfmpegArguments.PreferredContainer(m) == OutputContainer.Mkv ? ".mkv" : ".mp4"));
+
+    void UpdateContainerNote() => ContainerNote = !IsDiscordMode && media != null && FfmpegArguments.PreferredContainer(media) == OutputContainer.Mkv
+        ? "Saving as MKV because this video has image-based subtitles or attachments that MP4 cannot hold."
+        : "";
 
     void FillSourceInfo(MediaInfo m)
     {
@@ -274,7 +280,9 @@ public sealed class MainViewModel : INotifyPropertyChanged
             return null;
         }
         var ext = Path.GetExtension(name).ToLowerInvariant();
-        if (ext is not (".mp4" or ".mkv"))
+        if (IsDiscordMode)
+            name = ext is ".mp4" or ".mkv" ? Path.ChangeExtension(name, ".mp4") : name + ".mp4";
+        else if (ext is not (".mp4" or ".mkv"))
             name += FfmpegArguments.PreferredContainer(media!) == OutputContainer.Mkv ? ".mkv" : ".mp4";
         if (string.IsNullOrWhiteSpace(OutputFolder)) { ErrorMessage = "Choose an output folder."; return null; }
         try { return Path.GetFullPath(Path.Combine(OutputFolder, name)); }
@@ -295,28 +303,45 @@ public sealed class MainViewModel : INotifyPropertyChanged
 
     public long? RequiredBytes(EncodeRequest r) => EncodeJob.EstimateRequiredBytes(r, media!);
 
-    public async Task StartAsync(EncodeRequest request)
+    public Task StartAsync(EncodeRequest request)
+    {
+        AppLog.Write($"Encoding {request.InputPath} -> {request.OutputPath} (CRF {request.Quality.Crf}, speed {request.Quality.Speed}, {request.Encoder}, audio {(request.IncludeAudio ? "kept" : "removed")}).");
+        return RunEncodeAsync((progress, token) =>
+        {
+            job = new EncodeJob(tools!, request, media!, AppLog.Write);
+            return job.RunAsync(progress, token);
+        }, ShowResultFor);
+    }
+
+    /// <summary>Shared run loop for both modes: state, progress, cancellation and error reporting.</summary>
+    async Task RunEncodeAsync(Func<IProgress<EncodeProgress>, CancellationToken, Task<EncodeResult>> work, Action<EncodeResult> showResult)
     {
         if (!CanStart) return;
         ErrorMessage = null;
+        CanEncodeAnyway = false;
         Percent = 0; PercentText = "0.0%"; ElapsedText = "0:00"; RemainingText = "calculating…"; SpeedText = "–"; EstimateText = "calculating…";
         Stage = "Starting…";
         cts = new CancellationTokenSource();
-        job = new EncodeJob(tools!, request, media!, AppLog.Write);
         State = JobState.Encoding;
-        AppLog.Write($"Encoding {request.InputPath} -> {request.OutputPath} (CRF {request.Quality.Crf}, speed {request.Quality.Speed}, {request.Encoder}, audio {(request.IncludeAudio ? "kept" : "removed")}).");
         var progress = new Progress<EncodeProgress>(OnProgress);
         try
         {
             var token = cts.Token;
-            var result = await Task.Run(() => job.RunAsync(progress, token));
-            ShowResultFor(result);
+            var result = await Task.Run(() => work(progress, token));
+            showResult(result);
             State = JobState.Completed;
         }
         catch (OperationCanceledException)
         {
             AppLog.Write("Encoding cancelled; temporary output removed.");
             State = JobState.Cancelled;
+        }
+        catch (TargetUnreachableException ex)
+        {
+            AppLog.Write($"Size target not reached: {ex.Message} {ex.Details}");
+            ErrorMessage = ex.Message + " Nothing was saved. Try trimming the video, a lower resolution, or a larger size limit, or encode anyway at lower quality.";
+            CanEncodeAnyway = true;
+            State = JobState.Failed;
         }
         catch (EncodeException ex)
         {
@@ -341,6 +366,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     void ShowResultFor(EncodeResult r)
     {
         LastOutputPath = r.OutputPath;
+        ResultSavedLabel = "Saved"; ResultTimeLabel = "Encoding time";
         ResultSize = $"{Format.Size(r.OutputBytes)}  (was {Format.Size(r.InputBytes)})";
         ResultSaved = r.SavedBytes >= 0
             ? $"{Format.Size(r.SavedBytes)} smaller ({r.SavedPercent:0.#}% reduction)"

@@ -64,6 +64,17 @@ public static class MediaProbe
         return Parse(path, await stdout);
     }
 
+    /// <summary>Saves the frame shown at <paramref name="at"/> as a PNG, scaled to <paramref name="height"/> pixels high.</summary>
+    public static async Task ExtractFrameAsync(FfmpegTools tools, MediaInfo media, TimeSpan at, string pngPath, int height = 180, CancellationToken ct = default)
+    {
+        var video = media.Video ?? throw new EncodeException("This file does not contain a video stream.");
+        var exit = await new FfmpegProcess().RunAsync(tools.FfmpegPath,
+            ["-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-ss", at.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture),
+             "-i", media.Path, "-map", $"0:{video.Index}", "-frames:v", "1", "-vf", $"scale=-2:{height}", pngPath], null, null, ct);
+        if (exit.ExitCode != 0 || !File.Exists(pngPath))
+            throw new EncodeException("A preview frame could not be read.", string.Join(Environment.NewLine, exit.StderrTail));
+    }
+
     /// <summary>Fails early with a clear message when another program holds the file exclusively.</summary>
     internal static void EnsureReadable(string path)
     {

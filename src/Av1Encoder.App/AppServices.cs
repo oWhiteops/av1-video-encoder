@@ -19,6 +19,14 @@ public sealed class AppSettings
     /// <summary>Extra SVT-AV1 parameters, e.g. "tune=0". Advanced; empty by default.</summary>
     public string? SvtParams { get; set; }
 
+    // Video to Discord mode
+    public bool DiscordMode { get; set; }
+    public bool DiscordUseCustomTarget { get; set; }
+    /// <summary>Custom limit in MB (MiB, like Explorer); converted to an exact byte count.</summary>
+    public double DiscordCustomTargetMB { get; set; } = 49;
+    public DiscordStrategy DiscordStrategy { get; set; } = DiscordStrategy.Balanced;
+    public bool SkipQualityAnalysis { get; set; }
+
     static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
     static string FilePath => Path.Combine(AppLog.DataDir, "settings.json");
 

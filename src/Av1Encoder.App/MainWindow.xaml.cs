@@ -56,7 +56,10 @@ public partial class MainWindow : Window
 
     void OnUseSourceFolder(object sender, RoutedEventArgs e) => vm.UseSourceFolder();
 
-    async void OnStart(object sender, RoutedEventArgs e)
+    void OnStart(object sender, RoutedEventArgs e) => Start(ignoreFloor: false);
+    void OnEncodeAnyway(object sender, RoutedEventArgs e) => Start(ignoreFloor: true);
+
+    async void Start(bool ignoreFloor)
     {
         var output = vm.ResolveOutputPath();
         if (output == null) return;
@@ -69,16 +72,30 @@ public partial class MainWindow : Window
             overwrite = true;
         }
 
-        var request = vm.BuildRequest(output, overwrite);
-        long needed = vm.RequiredBytes(request) ?? 0;
+        var request = vm.IsDiscordMode ? null : vm.BuildRequest(output, overwrite);
+        long needed = request != null ? vm.RequiredBytes(request) ?? 0 : vm.DiscordRequiredBytes;
         if (Engine.EncodeJob.AvailableBytes(output) is long free && free < needed)
         {
             if (MessageBox.Show(this,
                     $"The destination drive has {Format.Size(free)} free. This encode may need up to about {Format.Size(needed)} (an estimate).\n\nStart anyway?",
                     "Low disk space", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
         }
-        await vm.StartAsync(request);
+
+        if (request != null) { await vm.StartAsync(request); return; }
+
+        if (!ignoreFloor && vm.PlanBelowFloor)
+        {
+            if (MessageBox.Show(this,
+                    $"{vm.PlanHeadline}.\n\nAt this size limit the video will likely look very blocky. Trimming it or a lower resolution usually looks much better.\n\nEncode anyway?",
+                    "Low quality expected", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+            ignoreFloor = true;
+        }
+        await vm.StartDiscordAsync(output, overwrite, ignoreFloor);
     }
+
+    void OnCancelAnalysis(object sender, RoutedEventArgs e) => vm.CancelAnalysis();
+    void OnSkipAnalysis(object sender, RoutedEventArgs e) => vm.SkipAnalysisNow();
+    void OnResetOverrides(object sender, RoutedEventArgs e) => vm.ResetOverrides();
 
     void OnPause(object sender, RoutedEventArgs e) => vm.TogglePause();
     void OnCancel(object sender, RoutedEventArgs e) => vm.Cancel();
