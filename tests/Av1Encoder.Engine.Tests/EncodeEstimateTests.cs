@@ -71,6 +71,22 @@ public class EncodeEstimateTests
     }
 
     [Fact]
+    public void HardwareEstimateComesStraightFromTheGpuSample()
+    {
+        var request = Request() with { Encoder = VideoEncoder.Amf };
+        var sample = new HardwareSample(VideoEncoder.Amf, request.Quality, VideoKbps: 6000, Fps: 240);
+        Assert.True(sample.Matches(request));
+        Assert.False(sample.Matches(request with { Quality = QualitySettings.For(QualityPreset.HighQuality) }));
+        Assert.False(sample.Matches(request with { Encoder = VideoEncoder.SvtAv1 }));
+
+        var e = EncodeEstimator.EstimateHardware(Media(), request, sample);
+        double point = 6000 * 1000 / 8.0 * 60 + 160_000 / 8.0 * 60;    // GPU video bitrate + copied audio
+        Assert.Equal(point * EncodeEstimator.HardwareSizeLow, e.MinBytes, tolerance: 10);
+        Assert.Equal(point * EncodeEstimator.HardwareSizeHigh, e.MaxBytes, tolerance: 10);
+        Assert.Equal(15 * EncodeEstimator.HardwareTimeLow, e.MinTime!.Value.TotalSeconds, 3);   // 3600 frames at 240 fps
+    }
+
+    [Fact]
     public void NoTimeForHardwareOrWithoutASpeedSample()
     {
         Assert.Null(EncodeEstimator.Estimate(Media(), Request() with { Encoder = VideoEncoder.Amf }, Measured).MinTime);

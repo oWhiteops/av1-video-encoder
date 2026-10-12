@@ -65,8 +65,21 @@ excerpt of each calibration clip, encoded at High Quality, Balanced, Smallest Fi
 check now times a 1-frame encode at the first sample and subtracts it. Encode speed by preset (relative to preset 8,
 timed on 1080p60 and 4K30 clips): 2: 8.3x, 3: 4.9x, 4: 2.4x, 5: 2.0x, 6: 1.7x, 8: 1x, 10: 0.74x, 12: 0.72x.
 
-Times are for the computer running the app, with nothing else running; other load makes encodes slower than shown. Hardware encoders get
-no time estimate.
+Times are for the computer running the app, with nothing else running; other load makes encodes slower than shown.
+
+## Hardware encoders
+
+With a hardware encoder selected, the estimate comes from three 2 s test encodes with the exact settings on the GPU
+(`SizeTargeting.SampleHardwareAsync`), minus a 2-frame start-up probe. Validated with `ESTIMATE_GPU=1
+ESTIMATE_DIR=<folder> dotnet test --filter CompareGpuEstimatesWithRealEncodes` on AMD AMF: the same 30 s excerpts at
+the three presets (30 encodes, 16 min).
+
+| | Ratio (actual / sample figure) | Shown range | Inside range |
+|---|---|---|---|
+| Size | 0.88-1.09, plus a screen recording at 0.53-0.56 | 0.85-1.15x | 27 of 30 (the misses were smaller) |
+| Time | 1.00-1.42, median 1.08 | 0.95-1.35x | 29 of 30 (miss: screen recording, 1.42x) |
+
+Unlike SVT-AV1, full GPU encodes never ran faster than the samples, so no time scale is applied.
 
 ## Raw calibration results (before the changes above)
 

@@ -378,6 +378,8 @@ public sealed partial class MainViewModel
             OverwriteExisting = overwrite, SvtParams = settings.SvtParams,
         }, input);
         int floor = ignoreFloor ? SizeTargeting.MinVideoKbps : p.FloorKbps;
+        runRequest = request with { Quality = request.Quality with { VideoBitrateKbps = p.VideoKbps } };
+        runEstimate = EstimateFor(runRequest);
         AppLog.Write($"Discord encode {m.Path} -> {outputPath}: limit {target:N0} bytes, {settings.DiscordStrategy}, " +
             $"short side {p.MaxShortSide?.ToString() ?? "original"}, fps {p.MaxFrameRate?.ToString() ?? "original"}, audio {p.AudioKbps} kbps, floor {floor} kbps.");
         return RunEncodeAsync((progress, token) => SizeTargeting.EncodeToSizeAsync(tools!, request, m, target, progress: progress, log: AppLog.Write,

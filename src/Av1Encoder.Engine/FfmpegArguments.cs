@@ -138,10 +138,20 @@ public static class FfmpegArguments
                 if (!string.IsNullOrWhiteSpace(svtParams)) svt.AddRange(["-svtav1-params", svtParams]);
                 return svt;
             case VideoEncoder.Amf:
+            {
+                string[] amf = ["-c:v", "av1_amf", "-usage", "transcoding", "-quality", "high_quality"];
+                if (q.VideoBitrateKbps is not null)
+                    return [.. amf, "-rc", "vbr_peak", "-b:v", kbps!, "-maxrate", kbps!, .. TenBitAmf(v)];
+                // AMF refuses QVBR for 10-bit input ("Init() failed with error 10", any resolution), which made 10-bit HDR
+                // fall back to slow software. Constant QP accepts it; see AmfQp for the quality match.
+                if (v.BitDepth > 8)
+                {
+                    string qp = $"{AmfQp(q.HardwareQuality)}";
+                    return [.. amf, "-rc", "cqp", "-qp_i", qp, "-qp_p", qp, "-qp_b", qp, .. TenBitAmf(v)];
+                }
                 // AMF's QVBR level runs the other way (higher = better); 52 - q keeps one "lower is better" scale.
-                return q.VideoBitrateKbps is null
-                    ? ["-c:v", "av1_amf", "-usage", "transcoding", "-quality", "high_quality", "-rc", "qvbr", "-qvbr_quality_level", $"{52 - q.HardwareQuality}"]
-                    : ["-c:v", "av1_amf", "-usage", "transcoding", "-quality", "high_quality", "-rc", "vbr_peak", "-b:v", kbps!, "-maxrate", kbps!];
+                return [.. amf, "-rc", "qvbr", "-qvbr_quality_level", $"{52 - q.HardwareQuality}"];
+            }
             case VideoEncoder.Nvenc:
                 return q.VideoBitrateKbps is null
                     ? ["-c:v", "av1_nvenc", "-preset", "p6", "-tune", "hq", "-rc", "vbr", "-cq", $"{q.HardwareQuality}", "-b:v", "0"]
@@ -154,6 +164,15 @@ public static class FfmpegArguments
                 throw new ArgumentOutOfRangeException(nameof(encoder));
         }
     }
+
+    /// <summary>AMF takes 10-bit frames as P010 (10-bit output, so HDR survives); plain 10-bit YUV is rejected.</summary>
+    static string[] TenBitAmf(VideoStreamInfo v) => v.BitDepth > 8 ? ["-pix_fmt", "p010le"] : [];
+
+    /// <summary>
+    /// AV1 constant QP (0-255) matching the QVBR presets' quality: on two 8-bit clips, QVBR 32 / 26 / 20 (High Quality /
+    /// Balanced / Smallest File) measured the same VMAF as QP ~116 / 131 / 148, a straight line in the hardware quality value.
+    /// </summary>
+    internal static int AmfQp(int hardwareQuality) => Math.Clamp((int)Math.Round(63 + 2.67 * hardwareQuality), 1, 255);
 
     static string Seconds(TimeSpan t) => t.TotalSeconds.ToString("0.###", CultureInfo.InvariantCulture);
 

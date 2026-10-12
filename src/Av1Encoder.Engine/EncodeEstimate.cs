@@ -3,6 +3,13 @@ namespace Av1Encoder.Engine;
 /// <summary>Expected output size and encoding time, as ranges. Time is null when it can't be estimated (hardware encoder, no speed sample).</summary>
 public sealed record EncodeEstimate(long MinBytes, long MaxBytes, TimeSpan? MinTime, TimeSpan? MaxTime);
 
+/// <summary>What a hardware encoder reached on short samples with specific settings (<see cref="SizeTargeting.SampleHardwareAsync"/>).</summary>
+public sealed record HardwareSample(VideoEncoder Encoder, QualitySettings Quality, double VideoKbps, double Fps)
+{
+    /// <summary>The sample only describes encodes with the same encoder and quality settings.</summary>
+    public bool Matches(EncodeRequest r) => r.Encoder == Encoder && r.Quality == Quality;
+}
+
 /// <summary>
 /// Predicts size and time for any request from one quick check (<see cref="SizeTargeting.AnalyzeAsync"/>), so the
 /// estimate follows preset, quality, trim and resolution changes instantly. Pure: no FFmpeg, no I/O.
@@ -29,6 +36,26 @@ public static class EncodeEstimator
 
     public static double CrfFactor(int crf) => Math.Exp(-CrfStep * (crf - 32));
 
+    // 30 AMF encodes of the calibration clips: size 27 of 30 within 0.85-1.15x (the misses, a screen recording at 0.53-0.56x,
+    // came out smaller); time 1.00-1.42x, median 1.08 (full encodes never ran faster than the samples), 29 of 30 within 0.95-1.35x.
+    public const double HardwareSizeLow = 0.85, HardwareSizeHigh = 1.15, HardwareTimeLow = 0.95, HardwareTimeHigh = 1.35;
+
+    /// <summary>Size and time for a hardware encode, straight from samples taken with the same settings.</summary>
+    public static EncodeEstimate EstimateHardware(MediaInfo media, EncodeRequest request, HardwareSample sample)
+    {
+        var duration = request.OutputDuration(media);
+        double audioBytes = AudioBytes(media, request, duration);
+        double point = sample.VideoKbps * 1000 / 8.0 * duration.TotalSeconds + audioBytes;
+        double seconds = duration.TotalSeconds * Math.Max(media.Video?.FrameRate ?? 30, 1) / Math.Max(sample.Fps, 0.001);
+        return new((long)(point * HardwareSizeLow), (long)(point * HardwareSizeHigh),
+            TimeSpan.FromSeconds(seconds * HardwareTimeLow), TimeSpan.FromSeconds(seconds * HardwareTimeHigh));
+    }
+
+    static double AudioBytes(MediaInfo media, EncodeRequest request, TimeSpan duration) =>
+        FfmpegArguments.KeptAudio(media, request).Sum(a =>
+            (FfmpegArguments.CanCopyAudio(a, request) ? a.BitRate ?? 128_000 : FfmpegArguments.AudioBitrateKbps(a, request) * 1000.0) / 8)
+        * duration.TotalSeconds;
+
     public static EncodeEstimate Estimate(MediaInfo media, EncodeRequest request, ComplexityEstimate complexity)
     {
         var v = media.Video ?? throw new EncodeException("This file does not contain a video stream.");
@@ -40,9 +67,7 @@ public static class EncodeEstimator
         double fps = request.MaxFrameRate is double f && f < sourceFps - 0.01 ? f : sourceFps;
         var q = request.Quality;
 
-        double audioBytes = FfmpegArguments.KeptAudio(media, request).Sum(a =>
-            (FfmpegArguments.CanCopyAudio(a, request) ? a.BitRate ?? 128_000 : FfmpegArguments.AudioBitrateKbps(a, request) * 1000.0) / 8)
-            * duration.TotalSeconds;
+        double audioBytes = AudioBytes(media, request, duration);
 
         long min, max;
         if (q.VideoBitrateKbps is int kbps)

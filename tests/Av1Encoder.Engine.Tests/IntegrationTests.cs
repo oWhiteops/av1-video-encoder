@@ -392,6 +392,45 @@ public class IntegrationTests(Samples s)
     }
 
     [Fact]
+    public async Task AmfEncodesTenBitHdrWithoutFallingBack()
+    {
+        var availability = await HardwareDetector.DetectAsync(s.Tools);
+        if (!availability.Any(a => a.Encoder == VideoEncoder.Amf && a.Available)) return; // no AMD AV1 GPU here
+        var input = s.Get("hdr10bit.mkv", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=24:d=2,format=yuv420p10le,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc",
+            "-c:v", "ffv1", "-color_primaries", "bt2020", "-color_trc", "smpte2084", "-colorspace", "bt2020nc");
+        var media = await MediaProbe.ProbeAsync(s.Tools, input);
+        Assert.Equal(10, media.Video!.BitDepth);
+        // AMF initialization fails intermittently on some drivers; a real 10-bit problem fails both tries.
+        EncodeResult? result = null;
+        for (int attempt = 0; attempt < 2 && result is not { FellBackToSoftware: false }; attempt++)
+            (result, _) = await Encode(input, new EncodeRequest { InputPath = "", OutputPath = Out($"amf10-{attempt}.mp4"), Quality = Fast, Encoder = VideoEncoder.Amf });
+        Assert.False(result!.FellBackToSoftware, "AMF should encode 10-bit input without falling back to software");
+        Assert.Equal("av1", result.Output.Video!.Codec);
+        Assert.Equal(10, result.Output.Video.BitDepth);
+        AssertDecodesCleanly(result.OutputPath);
+    }
+
+    [Fact]
+    public async Task HardwareSampleMeasuresSizeAndSpeed()
+    {
+        var availability = await HardwareDetector.DetectAsync(s.Tools);
+        var hw = availability.FirstOrDefault(a => a.Available);
+        if (hw is null) return;
+        var input = s.Get("long.mkv", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=30", "-c:v", "ffv1");
+        var media = await MediaProbe.ProbeAsync(s.Tools, input);
+        // A start between frames at 30 fps once made the start-up probe ask for less than one frame; AMF then hung.
+        var request = new EncodeRequest { InputPath = input, OutputPath = "x.mp4", Quality = QualitySettings.For(QualityPreset.Balanced), Encoder = hw.Encoder,
+            TrimStart = TimeSpan.FromSeconds(3.0177) };
+        int before = Directory.GetFiles(Path.GetTempPath(), "av1-gpu-sample-*").Length;
+        HardwareSample? sample = null;
+        for (int attempt = 0; attempt < 2 && sample is null; attempt++)
+            try { sample = await SizeTargeting.SampleHardwareAsync(s.Tools, media, request); } catch (EncodeException) when (attempt == 0) { }
+        Assert.True(sample!.Matches(request));
+        Assert.True(sample.VideoKbps > 0 && sample.Fps > 0);
+        Assert.Equal(before, Directory.GetFiles(Path.GetTempPath(), "av1-gpu-sample-*").Length);
+    }
+
+    [Fact]
     public async Task SizeTargetedEncodeStaysUnderLimit()
     {
         var input = s.Get("target.mkv", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=6", "-f", "lavfi", "-i", "sine=d=6", "-c:v", "ffv1", "-c:a", "pcm_s16le");

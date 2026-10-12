@@ -62,10 +62,10 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         {
             log?.Invoke($"Hardware encoder {encoder} failed ({ex.Message}). Falling back to SVT-AV1 software encoding.");
             warnings.Add($"The {encoder} hardware encoder failed, so the video was encoded in software (SVT-AV1) instead.");
-            progress?.Report(new EncodeProgress(0, active.Elapsed, null, null, null, null, "Retrying with software encoder"));
+            progress?.Report(new EncodeProgress(0, active.Elapsed, null, null, null, null, "GPU encoder failed; restarting in software (slower)", VideoEncoder.SvtAv1));
             encoder = VideoEncoder.SvtAv1;
             fellBack = true;
-            output = await EncodeOnceAsync(encoder, progress, ct);
+            output = await EncodeOnceAsync(encoder, progress, ct, fallback: true);
         }
         active.Stop();
         log?.Invoke($"Finished in {active.Elapsed:hh\\:mm\\:ss}: {Media.SizeBytes:N0} -> {output.SizeBytes:N0} bytes.");
@@ -98,11 +98,12 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         }
     }
 
-    async Task<MediaInfo> EncodeOnceAsync(VideoEncoder encoder, IProgress<EncodeProgress>? progress, CancellationToken ct)
+    async Task<MediaInfo> EncodeOnceAsync(VideoEncoder encoder, IProgress<EncodeProgress>? progress, CancellationToken ct, bool fallback = false)
     {
         string temp = TempPathFor(Request.OutputPath);
         string passLog = temp[..^".partial".Length] + ".passlog"; // FFmpeg appends "-0.log"; the preflight sweep matches it
-        string stage = encoder == VideoEncoder.SvtAv1 ? "Encoding (SVT-AV1)" : $"Encoding ({encoder} hardware)";
+        string stage = fallback ? "Encoding in software (GPU encoder failed)"
+            : encoder == VideoEncoder.SvtAv1 ? "Encoding (SVT-AV1)" : $"Encoding ({encoder} hardware)";
         // Two-pass needs a bitrate target and only SVT-AV1 supports it here; pass 1 only analyses, so it writes no file.
         bool twoPass = Request.TwoPass && encoder == VideoEncoder.SvtAv1 && Request.Quality.VideoBitrateKbps != null;
         double firstShare = twoPass ? Pass1Share(Request.Quality.Speed) : 0;
@@ -130,7 +131,7 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
             TimeSpan? remaining = f >= 0.01 ? TimeSpan.FromSeconds(elapsed.TotalSeconds * (1 - f) / f) : null;
             bool writing = current.Offset + current.Span >= 1;
             long? estimate = writing && inPass >= 0.05 && p.TotalSizeBytes > 0 ? (long)(p.TotalSizeBytes.Value / inPass) : null;
-            progress?.Report(new EncodeProgress(f, elapsed, remaining, p.Speed, p.Fps, estimate, p.IsEnd && writing ? "Finalizing" : current.Stage));
+            progress?.Report(new EncodeProgress(f, elapsed, remaining, p.Speed, p.Fps, estimate, p.IsEnd && writing ? "Finalizing" : current.Stage, encoder));
         }
 
         using var stall = CancellationTokenSource.CreateLinkedTokenSource(ct);

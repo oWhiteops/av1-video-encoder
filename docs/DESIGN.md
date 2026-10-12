@@ -78,7 +78,8 @@ Av1Encoder.App (WPF)           Av1Encoder.Engine (net10.0, no UI)
 - **Pixel format:** SVT-AV1 always encodes 10-bit 4:2:0 (`yuv420p10le`). This is standard practice: AV1 Main
   profile includes 10-bit, it compresses better even from 8-bit sources, and it reduces banding. 4:2:2/4:4:4
   sources are converted to 4:2:0 (SVT-AV1 supports only 4:2:0). Hardware encoders let FFmpeg negotiate the
-  format.
+  format, except AMF with 10-bit sources: it gets `p010le` and constant QP, because it rejects QVBR for 10-bit
+  input (`Init() failed with error 10`, any resolution).
 
 ## Presets: how the defaults were chosen
 
@@ -113,7 +114,8 @@ Readings:
 
 \* One "lower is better" 1-51 scale for all GPUs: NVENC `-cq` and QSV `-global_quality` take it directly,
 AMF gets `qvbr_quality_level = 52 − value`. 20/26/32 matched SVT-AV1's VMAF at CRF 26/32/40 on AMF.
-Custom CRF maps to it as `2 + 0.75 × CRF`.
+Custom CRF maps to it as `2 + 0.75 × CRF`. For 10-bit sources AMF uses `-rc cqp` with QP `63 + 2.67 × value`
+(116 / 132 / 148), which matched the QVBR levels' VMAF on two clips.
 
 VMAF ≥ 95 is commonly taken as visually transparent for typical viewing; ≈ 93 shows softening of fine detail
 on close inspection, which fits "Smallest File, still clear".

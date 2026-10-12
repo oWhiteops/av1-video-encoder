@@ -77,8 +77,10 @@ public sealed record EncodeRequest
         Path.GetExtension(OutputPath).Equals(".mkv", StringComparison.OrdinalIgnoreCase) ? OutputContainer.Mkv : OutputContainer.Mp4;
 }
 
+/// <param name="Encoder">The encoder actually running; differs from the request after a hardware-to-software fallback.</param>
 public sealed record EncodeProgress(
-    double Fraction, TimeSpan Elapsed, TimeSpan? Remaining, double? Speed, double? Fps, long? EstimatedOutputBytes, string Stage);
+    double Fraction, TimeSpan Elapsed, TimeSpan? Remaining, double? Speed, double? Fps, long? EstimatedOutputBytes, string Stage,
+    VideoEncoder? Encoder = null);
 
 public sealed record EncodeResult(
     string OutputPath, long InputBytes, long OutputBytes, TimeSpan EncodeTime, VideoEncoder EncoderUsed,

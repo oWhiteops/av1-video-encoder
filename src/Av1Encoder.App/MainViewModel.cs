@@ -46,6 +46,9 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         PropertyChanged?.Invoke(this, new(name));
         if (name != nameof(EstimateLine)) PropertyChanged?.Invoke(this, new(nameof(EstimateLine)));
+        // Encoder or quality changes need a new GPU measurement (a no-op for software or when it still matches).
+        if (name is nameof(SelectedEncoder) or nameof(UseCustom) or nameof(IsHighQuality) or nameof(CustomCrf) or nameof(CustomSpeed) or nameof(IsDiscordMode))
+            SampleHardware();
     }
 
     // ---------- State ----------
@@ -115,6 +118,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             UpdateContainerNote();
             State = JobState.Ready;
             OnDiscordMediaLoaded();
+            ResetHardwareSample();
             AppLog.Write($"Loaded: {info.FormatName}, {info.Video.Width}x{info.Video.Height}, {info.Duration}, {info.Audio.Count} audio, {info.Subtitles.Count} subtitle stream(s).");
         }
         catch (EncodeException ex)
@@ -247,30 +251,103 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     // ---------- Estimate ----------
 
-    /// <summary>"Estimated output ≈ 48–62 MB · encoding time ≈ 3–5 min on this PC", from the quick check.</summary>
+    HardwareSample? hwSample;
+    string? hwError;
+    bool hwSampling;
+    CancellationTokenSource? hwCts;
+
+    /// <summary>The request Start would run now, or null when it can't be built yet.</summary>
+    EncodeRequest? CurrentRequest()
+    {
+        if (media?.Video == null) return null;
+        if (IsDiscordMode)
+            return plan == null || planInput == null ? null
+                : plan.Apply(new EncodeRequest { InputPath = media.Path, OutputPath = "x.mp4", Quality = QualitySettings.For(QualityPreset.Balanced) }, planInput)
+                    with { Quality = new QualitySettings(32, plan.Settings.Speed, 26, VideoBitrateKbps: plan.VideoKbps) };
+        return BuildRequest(OutputFileName.Length > 0 ? OutputFileName : "x.mp4", false) with { TrimStart = null, TrimEnd = null };
+    }
+
+    /// <summary>
+    /// Size/time estimate for a request: GPU encodes from GPU samples, software from the quick check. When the GPU
+    /// can't encode the video, the estimate is for the software encode it would fall back to.
+    /// </summary>
+    EncodeEstimate? EstimateFor(EncodeRequest request)
+    {
+        if (request.Encoder != VideoEncoder.SvtAv1)
+        {
+            if (hwSample?.Matches(request) == true) return EncodeEstimator.EstimateHardware(media!, request, hwSample);
+            if (hwError == null) return null;
+            request = request with { Encoder = VideoEncoder.SvtAv1 };
+        }
+        return complexity == null ? null : EncodeEstimator.Estimate(media!, request, complexity);
+    }
+
+    /// <summary>"Estimated output ≈ 48–62 MB · encoding time ≈ 3–5 min on this PC", from the quick check or GPU samples.</summary>
     public string EstimateLine
     {
         get
         {
-            if (media?.Video == null || tools == null) return "";
-            if (complexity == null)
+            if (media?.Video == null || tools == null || CurrentRequest() is not { } request) return "";
+            bool gpu = request.Encoder != VideoEncoder.SvtAv1;
+            if (gpu && hwSample?.Matches(request) != true && hwError == null)
+                return hwSampling ? $"Measuring the {HardwareDetector.DisplayName(request.Encoder)} encoder…" : "";
+            if (EstimateFor(request) is not { } e)
                 return IsAnalyzing ? "Estimating output size and encoding time…"
                     : SkipQualityAnalysis ? "Size and time estimates need the quality check, which is turned off." : "";
-            EncodeRequest? request;
-            if (IsDiscordMode)
-                request = plan == null || planInput == null ? null
-                    : plan.Apply(new EncodeRequest { InputPath = media.Path, OutputPath = "x.mp4", Quality = QualitySettings.For(QualityPreset.Balanced) }, planInput)
-                        with { Quality = new QualitySettings(32, plan.Settings.Speed, 26, VideoBitrateKbps: plan.VideoKbps) };
-            else
-                request = BuildRequest(OutputFileName.Length > 0 ? OutputFileName : "x.mp4", false) with { TrimStart = null, TrimEnd = null };
-            if (request == null) return "";
-            var e = EncodeEstimator.Estimate(media, request, complexity);
-            string time = e.MinTime is { } lo && e.MaxTime is { } hi
-                ? $"encoding time ≈ {Format.TimeRange(lo, hi)} on this PC"
-                : "no time estimate for hardware encoders";
+            string where = gpu && hwError == null ? "on this PC's GPU" : "on this PC";
+            string time = e.MinTime is { } lo && e.MaxTime is { } hi ? $"encoding time ≈ {Format.TimeRange(lo, hi)} {where}" : "no time estimate";
+            string prefix = gpu && hwError != null
+                ? "The GPU encoder can't encode this video, so it would fall back to slower software encoding. "
+                : "";
             // Discord mode already shows its expected size next to the limit.
-            return IsDiscordMode ? $"Estimated {time}." : $"Estimated output ≈ {Format.SizeRange(e.MinBytes, e.MaxBytes)} · {time}.";
+            return prefix + (IsDiscordMode ? $"Estimated {time}." : $"Estimated output ≈ {Format.SizeRange(e.MinBytes, e.MaxBytes)} · {time}.");
         }
+    }
+
+    /// <summary>Measures the selected GPU encoder with the current quality settings; re-runs when they change.</summary>
+    async void SampleHardware()
+    {
+        if (media?.Video == null || tools == null || IsBusy || IsDiscordMode) return;
+        if (CurrentRequest() is not { } request || request.Encoder == VideoEncoder.SvtAv1 || hwSample?.Matches(request) == true) return;
+        hwCts?.Cancel();
+        var cts = hwCts = new CancellationTokenSource();
+        try { await Task.Delay(400, cts.Token); } // settle while the user clicks through presets
+        catch (OperationCanceledException) { return; }
+        hwSampling = true;
+        hwError = null;
+        Raise(nameof(EstimateLine));
+        var m = media;
+        try
+        {
+            var sample = await Task.Run(() => SizeTargeting.SampleHardwareAsync(tools, m, request, null, cts.Token));
+            if (cts != hwCts) return;
+            hwSample = sample;
+            AppLog.Write($"GPU sample ({request.Encoder}, quality {request.Quality.HardwareQuality}): {sample.VideoKbps:0} kbps, {sample.Fps:0.#} fps.");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) // async void: nothing may escape
+        {
+            AppLog.Write($"GPU sample failed: {ex.Message} {(ex as EncodeException)?.Details}");
+            if (cts == hwCts) hwError = ex.Message;
+        }
+        finally
+        {
+            if (cts == hwCts)
+            {
+                hwSampling = false;
+                Raise(nameof(EstimateLine));
+            }
+        }
+    }
+
+    /// <summary>A new video invalidates the GPU sample.</summary>
+    void ResetHardwareSample()
+    {
+        hwCts?.Cancel();
+        hwSample = null;
+        hwError = null;
+        hwSampling = false;
+        SampleHardware();
     }
 
     // ---------- Progress & result ----------
@@ -294,14 +371,29 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public bool HasResultNotes => ResultNotes.Length > 0;
     public string? LastOutputPath { get; private set; }
 
+    /// <summary>Pre-encode estimate for the running encode; shown until live numbers are reliable.</summary>
+    EncodeEstimate? runEstimate;
+    EncodeRequest? runRequest;
+
     void OnProgress(EncodeProgress p)
     {
+        // After a GPU-to-software fallback the GPU estimate no longer applies.
+        if (p.Encoder is { } actual && runRequest != null && runRequest.Encoder != actual && media != null)
+        {
+            runRequest = runRequest with { Encoder = actual };
+            runEstimate = complexity == null ? null : EncodeEstimator.Estimate(media, runRequest, complexity);
+        }
         Percent = p.Fraction * 100;
         PercentText = $"{p.Fraction * 100:0.0}%";
         ElapsedText = Format.Duration(p.Elapsed);
-        RemainingText = p.Remaining is { } r ? "≈ " + Format.Duration(r) : "calculating…";
-        SpeedText = p.Speed is double s ? $"{s:0.00}× realtime" + (p.Fps is double f ? $" ({f:0} fps)" : "") : "–";
-        EstimateText = p.EstimatedOutputBytes is long e ? "≈ " + Format.Size(e) + " (estimate)" : "calculating…";
+        RemainingText = p.Remaining is { } r ? "≈ " + Format.Duration(r)
+            : runEstimate is { MinTime: { } lo, MaxTime: { } hi } && hi > p.Elapsed
+                ? $"≈ {Format.TimeRange(lo > p.Elapsed ? lo - p.Elapsed : TimeSpan.FromSeconds(1), hi - p.Elapsed)} (estimate)"
+                : "calculating…";
+        SpeedText = p.Speed is double s ? $"{s:0.00}× realtime" + (p.Fps is double f ? $" ({f:0} fps)" : "")
+            : p.Fps is double fps and > 0 ? $"{fps:0} fps" : "starting…";
+        EstimateText = p.EstimatedOutputBytes is long e ? "≈ " + Format.Size(e)
+            : runEstimate != null ? $"≈ {Format.SizeRange(runEstimate.MinBytes, runEstimate.MaxBytes)} (estimate)" : "calculating…";
         Stage = p.Stage;
     }
 
@@ -342,6 +434,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     public Task StartAsync(EncodeRequest request)
     {
+        runRequest = request;
+        runEstimate = EstimateFor(request);
         AppLog.Write($"Encoding {request.InputPath} -> {request.OutputPath} (CRF {request.Quality.Crf}, speed {request.Quality.Speed}, {request.Encoder}, audio {(request.IncludeAudio ? "kept" : "removed")}).");
         return RunEncodeAsync((progress, token) =>
         {

@@ -148,6 +148,79 @@ public static class SizeTargeting
         return new ComplexityEstimate(rates.Average(), rates.Max(), IsRough: false, Preset8Fps: frames / Math.Max(encodeSeconds, 0.001));
     }
 
+    /// <summary>
+    /// Measures a hardware encoder directly: encodes three 2 s samples (or a short video whole) with the request's exact
+    /// settings and returns the video bitrate and speed they reached. The software model doesn't apply to GPUs: their
+    /// files are 40-75% larger at the same quality and their speed depends on the card. Throws <see cref="EncodeException"/>
+    /// when the encoder can't encode this video, which is worth knowing before starting.
+    /// </summary>
+    public static TimeSpan HardwareSampleTimeout { get; set; } = TimeSpan.FromSeconds(30);
+
+    public static async Task<HardwareSample> SampleHardwareAsync(FfmpegTools tools, MediaInfo media, EncodeRequest request,
+        IProgress<double>? progress = null, CancellationToken ct = default)
+    {
+        var video = media.Video ?? throw new EncodeException("This file does not contain a video stream.");
+        double fps = Math.Max(video.FrameRate, 1);
+        var length = request.OutputDuration(media);
+        var start = request.TrimStart ?? TimeSpan.Zero;
+        bool whole = length <= SampleLength * SamplePositions.Length;
+        (TimeSpan Start, TimeSpan Length)[] samples = whole
+            ? [(start, length)]
+            : SamplePositions.Select(p => (start + length * p - SampleLength / 2, SampleLength)).ToArray();
+
+        // GPU drivers sometimes hang during initialization (AMF: a 48-byte output and no progress) or fail to start
+        // intermittently; a 2 s sample never legitimately takes 30 s, so a stuck run is stopped and retried once.
+        async Task<(double Seconds, long Bytes)> Run(TimeSpan at, TimeSpan len)
+        {
+            try { return await RunOnce(at, len); }
+            catch (EncodeException) { return await RunOnce(at, len); }
+        }
+
+        async Task<(double Seconds, long Bytes)> RunOnce(TimeSpan at, TimeSpan len)
+        {
+            var temp = Path.Combine(Path.GetTempPath(), $"av1-gpu-sample-{Guid.NewGuid():N}.mp4");
+            var sample = request with
+            {
+                TrimStart = at, TrimEnd = at + len, IncludeAudio = false, IncludeSubtitles = false, OutputPath = "sample.mp4",
+                MaxOutputBytes = null, TwoPass = false,
+            };
+            try
+            {
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                using var limit = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                limit.CancelAfter(HardwareSampleTimeout);
+                FfmpegExit exit;
+                try { exit = await new FfmpegProcess().RunAsync(tools.FfmpegPath, FfmpegArguments.Build(media, sample, request.Encoder, temp), null, null, limit.Token); }
+                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+                {
+                    throw new EncodeException($"The {HardwareDetector.DisplayName(request.Encoder)} encoder stopped responding.");
+                }
+                double seconds = clock.Elapsed.TotalSeconds;
+                if (exit.ExitCode != 0 || !File.Exists(temp))
+                    throw new EncodeException(EncodeJob.Explain(exit.StderrTail, request.Encoder), string.Join(Environment.NewLine, exit.StderrTail));
+                return (seconds, new FileInfo(temp).Length);
+            }
+            finally { try { File.Delete(temp); } catch (IOException) { } catch (UnauthorizedAccessException) { } }
+        }
+
+        // Start-up (device and session set-up, seek, decode) is timed with a 1-frame encode and subtracted, as for SVT-AV1.
+        // Two frames' worth: one frame's duration can round below a frame (1/30 s -> "0.033"), giving the encoder no
+        // frames at all, and AMF then spins forever waiting for input.
+        double overhead = (await Run(samples[0].Start, TimeSpan.FromSeconds(2 / fps))).Seconds;
+        double seconds = 0, bytes = 0, frames = 0;
+        for (int i = 0; i < samples.Length; i++)
+        {
+            var (at, len) = samples[i];
+            var (s, b) = await Run(at, len);
+            seconds += Math.Max(s - overhead, s * 0.1);
+            bytes += b;
+            frames += len.TotalSeconds * fps;
+            progress?.Report((i + 1.0) / samples.Length);
+        }
+        double sampled = samples.Sum(x => x.Length.TotalSeconds);
+        return new HardwareSample(request.Encoder, request.Quality, bytes * 8 / 1000.0 / sampled, frames / Math.Max(seconds, 0.001));
+    }
+
     /// <summary>SVT-AV1's default keyframe spacing with this build: 321 frames at 50+ fps, 161 below (measured).</summary>
     public static double KeyframeIntervalSeconds(double fps) => fps <= 0 ? 5.37 : (fps >= 50 ? 321 : 161) / fps;
 

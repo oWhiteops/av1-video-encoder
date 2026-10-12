@@ -213,6 +213,22 @@ public class FfmpegArgumentsTests
     }
 
     [Fact]
+    public void AmfUsesConstantQpAndP010ForTenBitSources()
+    {
+        var tenBit = Media() with { Video = Media().Video! with { PixelFormat = "yuv420p10le", BitDepth = 10, ColorTransfer = "smpte2084" } };
+        var args = FfmpegArguments.Build(tenBit, Request(), VideoEncoder.Amf, "o");
+        Assert.Equal("cqp", After(args, "-rc"));
+        Assert.Equal("p010le", After(args, "-pix_fmt"));
+        Assert.Equal(FfmpegArguments.AmfQp(QualitySettings.For(QualityPreset.Balanced).HardwareQuality).ToString(), After(args, "-qp_p"));
+        Assert.DoesNotContain("qvbr", args);
+        Assert.Equal("qvbr", After(FfmpegArguments.Build(Media(), Request(), VideoEncoder.Amf, "o"), "-rc"));   // 8-bit unchanged
+
+        // Presets map to the QPs that matched their QVBR quality, in order.
+        Assert.Equal([116, 132, 148], new[] { QualityPreset.HighQuality, QualityPreset.Balanced, QualityPreset.SmallestFile }
+            .Select(p => FfmpegArguments.AmfQp(QualitySettings.For(p).HardwareQuality)));
+    }
+
+    [Fact]
     public void NoVideoStreamIsAClearError()
     {
         var media = Media() with { Video = null };

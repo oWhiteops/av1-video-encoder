@@ -29,7 +29,7 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
   slightly smaller).
 - *Encoder*: software SVT-AV1, or a hardware AV1 encoder if one was detected on this PC. Hardware is optional
   and produces larger files at the same quality; if it fails or hangs, the app falls back to software
-  automatically.
+  automatically. With a hardware encoder selected, the estimate comes from short test encodes on the GPU itself.
 - *Keep audio*: untick to remove audio.
 
 Output is **MP4** (AV1 video + AAC audio). It switches to **MKV** automatically only when the source has
@@ -121,8 +121,8 @@ scripts\benchmark.ps1 -InputFile clip.mp4    # size / speed / VMAF grid used to 
 - Software output is 10-bit AV1 (better compression, less banding). Some very old hardware AV1 decoders only
   handle 8-bit.
 - HDR: BT.2020 / PQ / HLG colour signalling is preserved with SVT-AV1 (tested). Static mastering-display
-  metadata was not verified, and Dolby Vision / HDR10+ dynamic metadata is not preserved. Hardware encoders
-  may drop HDR metadata (the app warns).
+  metadata was not verified, and Dolby Vision / HDR10+ dynamic metadata is not preserved. AMD AMF keeps 10-bit
+  and the BT.2020 / PQ tags (tested); other hardware encoders may drop HDR metadata (the app warns).
 - Variable frame rate is detected with a fast heuristic; timestamps are always preserved regardless.
 - Subtitles: text subtitles are converted to MP4 text (ASS/SSA styling is lost; MKV keeps it). Image
   subtitles need MKV. Data streams (timecode, GPS/telemetry) and cover art are not carried over and are
