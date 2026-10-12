@@ -28,7 +28,20 @@ public class CalibrationTests(Samples s)
         var cal = new StringBuilder("## Calibration (60 s excerpt, preset 8, video only)\n\n| Clip | Source | CRF 32 kbps | CRF 26 / 38 / 44 size vs 32 | Pixel exponent (720p, 480p) | 30 fps factor | Sample / full |\n| --- | --- | --- | --- | --- | --- | --- |\n");
         var val = new StringBuilder("## Validation (whole clip, Discord encode, Balanced)\n\n| Clip | Target | Predicted r | Predicted label | Size | Mean VMAF | 5th pct VMAF | Worst 2 s VMAF | Analysis s |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |\n");
 
+        var root = AppContext.BaseDirectory;
+        while (!File.Exists(Path.Combine(root, "Av1Encoder.slnx"))) root = Path.GetDirectoryName(root)!;
+        Directory.CreateDirectory(Path.Combine(root, "artifacts"));
+        void Save() => File.WriteAllText(Path.Combine(root, "artifacts", "calibration.md"),
+            $"# Calibration results\n\nFFmpeg/SVT-AV1 as pinned by BundledFfmpegIsTheCalibratedBuild. Generated {DateTime.Now:yyyy-MM-dd HH:mm}.\n\n{cal}\n{val}");
+
         foreach (var clip in Directory.EnumerateFiles(dir).Where(f => VideoExtensions.Contains(Path.GetExtension(f).ToLowerInvariant())).Order())
+        {
+            try { await MeasureClip(clip); }
+            catch (Exception ex) { cal.AppendLine($"| {Path.GetFileName(clip)} | failed: {ex.Message.ReplaceLineEndings(" ")} | | | | | |"); }
+            Save(); // after every clip, so a late failure keeps the results so far
+        }
+
+        async Task MeasureClip(string clip)
         {
             var name = Path.GetFileName(clip);
             var media = await MediaProbe.ProbeAsync(s.Tools, clip);
@@ -68,18 +81,16 @@ public class CalibrationTests(Samples s)
                     var (mean, p5, worst) = Vmaf(result.OutputPath, clip, w, h, work);
                     val.AppendLine($"{row} | {result.OutputBytes / 1048576.0:0.00} MB | {mean:0.0} | {p5:0.0} | {worst:0.0} | {analysisSeconds:0} |");
                 }
-                catch (EncodeException ex)
+                catch (Exception ex)
                 {
-                    val.AppendLine($"{row} | failed: {ex.Message} | | | | {analysisSeconds:0} |");
+                    val.AppendLine($"{row} | failed: {ex.Message.ReplaceLineEndings(" ")} | | | | {analysisSeconds:0} |");
+                }
+                finally
+                {
+                    if (File.Exists(output)) File.Delete(output);
                 }
             }
         }
-
-        var root = AppContext.BaseDirectory;
-        while (!File.Exists(Path.Combine(root, "Av1Encoder.slnx"))) root = Path.GetDirectoryName(root)!;
-        Directory.CreateDirectory(Path.Combine(root, "artifacts"));
-        File.WriteAllText(Path.Combine(root, "artifacts", "calibration.md"),
-            $"# Calibration results\n\nFFmpeg/SVT-AV1 as pinned by BundledFfmpegIsTheCalibratedBuild. Generated {DateTime.Now:yyyy-MM-dd HH:mm}.\n\n{cal}\n{val}");
     }
 
     /// <summary>Video-only CRF encode of an excerpt at preset 8 (the analysis preset); returns its kbps.</summary>

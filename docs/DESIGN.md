@@ -140,6 +140,25 @@ var result = await SizeTargeting.EncodeToSizeAsync(tools, request, media, 19_922
     margin: plan.Settings.Margin, floorKbps: plan.FloorKbps); // TargetUnreachableException when it can't
 ```
 
+### Discord compatibility spike (2026-10-12)
+
+Files from `artifacts/discord-spike`, uploaded manually to a free Discord account. Every accepted
+file was reported to play as intended; the platforms tried were not itemized, so per-platform playback is still to
+be confirmed before the UI claims it.
+
+| File | Bytes | Result |
+|---|---|---|
+| A: 1080p30, 10-bit AV1 | 4,687,369 | Accepted, played |
+| B: 1080p30, 8-bit AV1 | 4,678,251 | Accepted, played |
+| C: portrait 1080x1920, 10-bit | 4,682,784 | Accepted, played |
+| D: 1080p60, 10-bit | 18,904,421 | Accepted, played |
+| E: 1080p60, 10-bit | 20,429,630 | Accepted, played |
+| F: 1080p60, 10-bit | 21,561,137 | Rejected: "this file exceeds the size limit" |
+
+E being accepted means the free limit is more than 20,000,000 bytes; F being rejected puts it below
+21,561,137. That fits 20 MiB (20,971,520). The 19 MiB default (19,922,944) is about 1 MB under it.
+10-bit output is fine, so the 10-bit default stays.
+
 | Strategy | SVT preset | Passes | Margin | Audio |
 |---|---|---|---|---|
 | Best Quality | 4 | 2 | 4% | 128 kbps |
