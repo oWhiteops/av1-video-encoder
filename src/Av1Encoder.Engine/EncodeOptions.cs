@@ -46,6 +46,8 @@ public sealed record EncodeRequest
     public bool OverwriteExisting { get; init; }
     /// <summary>Retry with SVT-AV1 if a hardware encoder fails to initialize or errors.</summary>
     public bool AllowSoftwareFallback { get; init; } = true;
+    /// <summary>Hard size limit. A temp output over it is deleted before it can reach <see cref="OutputPath"/>.</summary>
+    public long? MaxOutputBytes { get; init; }
 
     public OutputContainer Container =>
         Path.GetExtension(OutputPath).Equals(".mkv", StringComparison.OrdinalIgnoreCase) ? OutputContainer.Mkv : OutputContainer.Mp4;
@@ -66,6 +68,14 @@ public class EncodeException(string message, string? details = null) : Exception
 {
     /// <summary>Technical detail (FFmpeg output) for the log, not for the headline message.</summary>
     public string? Details { get; } = details;
+}
+
+/// <summary>The encode finished but was over <see cref="EncodeRequest.MaxOutputBytes"/>; nothing was saved.</summary>
+public sealed class OutputTooLargeException(long actualBytes, long maxBytes)
+    : EncodeException($"The encoded file was {actualBytes:N0} bytes, over the {maxBytes:N0}-byte limit, and was discarded.")
+{
+    public long ActualBytes { get; } = actualBytes;
+    public long MaxBytes { get; } = maxBytes;
 }
 
 public sealed class FfmpegTools(string directory)

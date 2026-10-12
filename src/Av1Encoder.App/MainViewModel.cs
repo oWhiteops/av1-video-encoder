@@ -367,7 +367,7 @@ public sealed class MainViewModel : INotifyPropertyChanged
     public async Task CancelAndWaitAsync()
     {
         Cancel();
-        for (int i = 0; i < 50 && IsBusy; i++) await Task.Delay(100);
+        for (int i = 0; i < 150 && IsBusy; i++) await Task.Delay(100); // up to 15 s for temp-file and pass-log cleanup
     }
 }
 

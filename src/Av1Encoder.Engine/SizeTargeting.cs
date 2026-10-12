@@ -30,20 +30,20 @@ public static class SizeTargeting
         {
             if (kbps < MinVideoKbps)
                 throw new EncodeException($"The video is too long to fit in {maxBytes / 1048576.0:0.#} MB at a usable quality.");
-            var attemptRequest = request with
-            {
-                Quality = request.Quality with { VideoBitrateKbps = kbps },
-                OverwriteExisting = template.OverwriteExisting || attempt > 1, // later attempts replace our own earlier output
-            };
+            // Oversized attempts are rejected inside EncodeJob before finalizing, so the destination (and any existing
+            // file there) is only ever touched by an output that fits; retries never need to overwrite anything.
+            var attemptRequest = request with { Quality = request.Quality with { VideoBitrateKbps = kbps }, MaxOutputBytes = maxBytes };
             log?.Invoke($"Size target {maxBytes:N0} bytes, attempt {attempt}: video {kbps} kbps.");
-            var result = await new EncodeJob(tools, attemptRequest, media, log).RunAsync(progress, ct);
-            if (result.OutputBytes <= maxBytes) return result;
-            if (attempt >= maxAttempts)
+            try { return await new EncodeJob(tools, attemptRequest, media, log).RunAsync(progress, ct); }
+            catch (OutputTooLargeException ex) when (attempt < maxAttempts)
             {
-                File.Delete(result.OutputPath);
-                throw new EncodeException($"Could not get the video under {maxBytes / 1048576.0:0.#} MB after {attempt} attempts.");
+                log?.Invoke(ex.Message);
+                kbps = (int)(kbps * (double)maxBytes / ex.ActualBytes * 0.95);
             }
-            kbps = (int)(kbps * (double)maxBytes / result.OutputBytes * 0.95);
+            catch (OutputTooLargeException ex)
+            {
+                throw new EncodeException($"Could not get the video under {maxBytes / 1048576.0:0.#} MB after {attempt} attempts.", ex.Message);
+            }
         }
     }
 }

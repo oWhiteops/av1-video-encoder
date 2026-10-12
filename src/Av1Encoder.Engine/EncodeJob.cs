@@ -58,7 +58,7 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         {
             output = await EncodeOnceAsync(encoder, progress, ct);
         }
-        catch (EncodeException ex) when (encoder != VideoEncoder.SvtAv1 && Request.AllowSoftwareFallback && !ct.IsCancellationRequested)
+        catch (EncodeException ex) when (ex is not OutputTooLargeException && encoder != VideoEncoder.SvtAv1 && Request.AllowSoftwareFallback && !ct.IsCancellationRequested)
         {
             log?.Invoke($"Hardware encoder {encoder} failed ({ex.Message}). Falling back to SVT-AV1 software encoding.");
             warnings.Add($"The {encoder} hardware encoder failed, so the video was encoded in software (SVT-AV1) instead.");
@@ -88,7 +88,9 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
 
         // Leftovers from a run that was killed outright (power loss, Task Manager). A temp file still being
         // written by a live encode is held open by FFmpeg, so the delete fails and it is left alone.
-        foreach (var stale in Directory.EnumerateFiles(Path.GetDirectoryName(outputPath)!, Path.GetFileName(outputPath) + ".*.partial"))
+        var dir = Path.GetDirectoryName(outputPath)!;
+        var name = Path.GetFileName(outputPath);
+        foreach (var stale in Directory.EnumerateFiles(dir, name + ".*.partial").Concat(Directory.EnumerateFiles(dir, name + ".*.passlog*")))
         {
             try { File.Delete(stale); log?.Invoke($"Removed leftover temporary file {Path.GetFileName(stale)}."); }
             catch (IOException) { }
@@ -140,6 +142,9 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
             if (exit.ExitCode != 0)
                 throw new EncodeException(Explain(exit.StderrTail, encoder), string.Join(Environment.NewLine, exit.StderrTail));
 
+            // Size is checked on the temp file so an oversized result never reaches the destination.
+            if (Request.MaxOutputBytes is long max && new FileInfo(temp).Length is var size && size > max)
+                throw new OutputTooLargeException(size, max);
             var output = await VerifyAsync(temp, ct);
             Finalize(temp);
             return output with { Path = Request.OutputPath };
