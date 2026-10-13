@@ -20,6 +20,8 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
     /// </summary>
     public TimeSpan? StallTimeout { get; init; }
     public static readonly TimeSpan HardwareStallTimeout = TimeSpan.FromSeconds(60);
+    /// <summary>AMF's intermittent hang happens at start-up (48-byte output, no frames), so before the first frame it is caught sooner.</summary>
+    public static readonly TimeSpan HardwareStartupStallTimeout = TimeSpan.FromSeconds(20);
 
     public EncodeRequest Request { get; } = request;
     public MediaInfo Media { get; } = media;
@@ -56,7 +58,14 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         MediaInfo output;
         try
         {
-            output = await EncodeOnceAsync(encoder, progress, ct);
+            try { output = await EncodeOnceAsync(encoder, progress, ct); }
+            // The AMF start-up hang is intermittent: the same command usually works on the next run, which beats software.
+            catch (EncodeException ex) when (ex is not OutputTooLargeException && encoder != VideoEncoder.SvtAv1 && !ct.IsCancellationRequested)
+            {
+                log?.Invoke($"Hardware encoder {encoder} failed ({ex.Message}). Retrying it once.");
+                progress?.Report(new EncodeProgress(0, active.Elapsed, null, null, null, null, "GPU encoder failed; retrying", encoder));
+                output = await EncodeOnceAsync(encoder, progress, ct);
+            }
         }
         catch (EncodeException ex) when (ex is not OutputTooLargeException && encoder != VideoEncoder.SvtAv1 && Request.AllowSoftwareFallback && !ct.IsCancellationRequested)
         {
@@ -119,11 +128,12 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         var current = passes[0];
         var stallTimeout = StallTimeout ?? (encoder == VideoEncoder.SvtAv1 ? null : HardwareStallTimeout);
         var sinceAdvance = Stopwatch.StartNew();
+        bool advanced = false;
         (TimeSpan?, long?) lastMark = default;
         double lastFraction = 0;
         void OnProgress(FfmpegProgress p)
         {
-            if ((p.OutTime, p.TotalSizeBytes) != lastMark) { lastMark = (p.OutTime, p.TotalSizeBytes); sinceAdvance.Restart(); }
+            if ((p.OutTime, p.TotalSizeBytes) != lastMark) { lastMark = (p.OutTime, p.TotalSizeBytes); sinceAdvance.Restart(); advanced |= p.OutTime > TimeSpan.Zero; }
             double inPass = total > 0 && p.OutTime is { } t ? Math.Clamp(t.TotalSeconds / total, 0, 1) : 0;
             // Blocks without a timestamp (N/A) would otherwise read as "0% into this pass" and make the bar jump back.
             double f = lastFraction = Math.Max(lastFraction, current.Offset + current.Span * inPass);
@@ -142,7 +152,7 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
             {
                 await Task.Delay(500, CancellationToken.None);
                 if (ffmpeg.IsPaused) sinceAdvance.Restart();
-                else if (sinceAdvance.Elapsed > limit) { stalled = true; stall.Cancel(); }
+                else if (sinceAdvance.Elapsed > (advanced || StallTimeout != null ? limit : HardwareStartupStallTimeout)) { stalled = true; stall.Cancel(); }
             }
         }, CancellationToken.None) : Task.CompletedTask;
 

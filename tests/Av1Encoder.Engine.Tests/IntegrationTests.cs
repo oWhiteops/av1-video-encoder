@@ -358,7 +358,10 @@ public class IntegrationTests(Samples s)
         var availability = await HardwareDetector.DetectAsync(s.Tools);
         var missing = availability.FirstOrDefault(a => !a.Available);
         if (missing is null) return; // every hardware encoder works on this machine; nothing to fall back from
-        var (result, _) = await Encode(s.Basic, new EncodeRequest { InputPath = "", OutputPath = Out("fallback.mp4"), Quality = Fast, Encoder = missing.Encoder });
+        var (result, progress) = await Encode(s.Basic, new EncodeRequest { InputPath = "", OutputPath = Out("fallback.mp4"), Quality = Fast, Encoder = missing.Encoder });
+        // The GPU gets one retry first (AMF's start-up hang is intermittent).
+        Assert.True(progress.FindIndex(p => p.Stage.Contains("retrying")) is var retry && retry >= 0
+            && retry < progress.FindIndex(p => p.Encoder == VideoEncoder.SvtAv1));
         Assert.True(result.FellBackToSoftware);
         Assert.Equal(VideoEncoder.SvtAv1, result.EncoderUsed);
         Assert.Equal("av1", result.Output.Video!.Codec);
