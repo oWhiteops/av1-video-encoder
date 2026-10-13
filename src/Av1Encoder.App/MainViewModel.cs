@@ -47,7 +47,12 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     void Notify(string? name)
     {
         PropertyChanged?.Invoke(this, new(name));
-        if (name != nameof(EstimateLine)) PropertyChanged?.Invoke(this, new(nameof(EstimateLine)));
+        if (name is not (nameof(EstimateLine) or nameof(HighQualityEstimate) or nameof(BalancedEstimate) or nameof(SmallestEstimate)))
+            foreach (var derived in new[] { nameof(EstimateLine), nameof(HighQualityEstimate), nameof(BalancedEstimate), nameof(SmallestEstimate) })
+                PropertyChanged?.Invoke(this, new(derived));
+        if (name is nameof(IsAnalyzing) or nameof(AnalysisStatus) or nameof(AnalysisPercent))
+            foreach (var check in new[] { nameof(IsChecking), nameof(CheckStatus), nameof(CheckPercent) })
+                PropertyChanged?.Invoke(this, new(check));
         // Encoder or quality changes need a new GPU measurement (a no-op for software or when it still matches).
         if (name is nameof(SelectedEncoder) or nameof(UseCustom) or nameof(IsHighQuality) or nameof(CustomCrf) or nameof(CustomSpeed) or nameof(IsDiscordMode))
             SampleHardware();
@@ -260,10 +265,24 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     // ---------- Estimate ----------
 
-    HardwareSample? hwSample;
-    string? hwError;
-    bool hwSampling;
+    /// <summary>GPU measurements by encoder and quality; every preset is measured, so switching presets needs none.</summary>
+    readonly Dictionary<(VideoEncoder, QualitySettings), HardwareSample> hwSamples = new();
+    /// <summary>Encoders that could not encode this video; their estimates fall back to software.</summary>
+    readonly Dictionary<VideoEncoder, string> hwErrors = new();
+    /// <summary>The measurements the running (or about to run) GPU check covers.</summary>
+    List<EncodeRequest> hwQueue = [];
+    bool hwSampling, hwPending;
+    double hwPercent;
+    string hwStatus = "";
     CancellationTokenSource? hwCts;
+
+    HardwareSample? SampleFor(EncodeRequest r) => hwSamples.GetValueOrDefault((r.Encoder, r.Quality));
+    string? HwError(EncodeRequest r) => hwErrors.GetValueOrDefault(r.Encoder);
+
+    /// <summary>The quality check line: the CPU check while it runs, then the GPU measurement, then the outcome.</summary>
+    public bool IsChecking => IsAnalyzing || hwSampling;
+    public string CheckStatus => IsAnalyzing || !hwSampling ? AnalysisStatus : hwStatus;
+    public double CheckPercent => IsAnalyzing ? AnalysisPercent : hwPercent;
 
     /// <summary>The request Start would run now, or null when it can't be built yet.</summary>
     EncodeRequest? CurrentRequest()
@@ -286,8 +305,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         EncodeEstimate? Learned(EncodeEstimate? e) => e != null && corrected ? history.Apply(e, request.Encoder) : e;
         if (request.Encoder != VideoEncoder.SvtAv1)
         {
-            if (hwSample?.Matches(request) == true) return Learned(EncodeEstimator.EstimateHardware(media!, request, hwSample));
-            if (hwError == null) return null;
+            if (SampleFor(request) is { } sample) return Learned(EncodeEstimator.EstimateHardware(media!, request, sample));
+            if (HwError(request) == null) return null;
             request = request with { Encoder = VideoEncoder.SvtAv1 };
         }
         return Learned(complexity == null ? null : EncodeEstimator.Estimate(media!, request, complexity));
@@ -330,7 +349,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             if (media?.Video == null || tools == null || CurrentRequest() is not { } request) return "";
             bool gpu = request.Encoder != VideoEncoder.SvtAv1;
-            if (gpu && hwSample?.Matches(request) != true && hwError == null)
+            string? hwError = gpu ? HwError(request) : null;
+            if (gpu && SampleFor(request) == null && hwError == null)
                 return hwSampling ? $"Measuring the {HardwareDetector.DisplayName(request.Encoder)} encoder…" : "";
             if (EstimateFor(request) is not { } e)
                 return IsAnalyzing ? "Estimating output size and encoding time…"
@@ -349,49 +369,97 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         }
     }
 
-    /// <summary>Measures the selected GPU encoder with the current quality settings; re-runs when they change.</summary>
+    /// <summary>"≈ 14–21 MB · 1–2 min" under each preset card, so the presets can be compared before encoding.</summary>
+    public string HighQualityEstimate => PresetEstimate(QualityPreset.HighQuality);
+    public string BalancedEstimate => PresetEstimate(QualityPreset.Balanced);
+    public string SmallestEstimate => PresetEstimate(QualityPreset.SmallestFile);
+
+    string PresetEstimate(QualityPreset preset)
+    {
+        if (IsDiscordMode || media?.Video == null || tools == null || CurrentRequest() is not { } request) return "";
+        request = request with { Quality = settings.QualityFor(preset) };
+        if (EstimateFor(request) is not { } e)
+            return IsAnalyzing || hwSampling && HwError(request) == null && request.Encoder != VideoEncoder.SvtAv1 ? "Estimating…" : "";
+        return $"≈ {Format.SizeRange(e.MinBytes, e.MaxBytes)}" + (e.MinTime is { } lo && e.MaxTime is { } hi ? $" · {Format.TimeRange(lo, hi)}" : "");
+    }
+
+    /// <summary>
+    /// Measures the selected GPU encoder: the current quality first, then each preset not measured yet, one after another
+    /// (the GPU encodes one sample at a time, so running them together would only skew the speed). A change re-runs
+    /// only what it leaves unmeasured: a new encoder or custom quality.
+    /// </summary>
     async void SampleHardware()
     {
-        if (media?.Video == null || tools == null || IsBusy || IsDiscordMode) return;
-        if (CurrentRequest() is not { } request || request.Encoder == VideoEncoder.SvtAv1 || hwSample?.Matches(request) == true) return;
+        if (media?.Video == null || tools == null || IsBusy || IsDiscordMode || SkipQualityAnalysis) return;
+        if (CurrentRequest() is not { } request || request.Encoder == VideoEncoder.SvtAv1 || HwError(request) != null) return;
+        var todo = Enum.GetValues<QualityPreset>().Select(p => request with { Quality = settings.QualityFor(p) }).Prepend(request)
+            .DistinctBy(r => r.Quality).Where(r => SampleFor(r) == null).ToList();
+        if (todo.Count == 0) return;
+        // Already being measured for this encoder: let it finish rather than restart.
+        if ((hwSampling || hwPending) && hwQueue.Any(q => q.Encoder == request.Encoder) &&
+            (SampleFor(request) != null || hwQueue.Any(q => q.Quality == request.Quality))) return;
         hwCts?.Cancel();
         var cts = hwCts = new CancellationTokenSource();
-        try { await Task.Delay(400, cts.Token); } // settle while the user clicks through presets
+        hwQueue = todo;
+        hwPending = true;
+        try { await Task.Delay(400, cts.Token); } // settle while the user clicks through settings
         catch (OperationCanceledException) { return; }
+        hwPending = false;
         hwSampling = true;
-        hwError = null;
-        Raise(nameof(EstimateLine));
         var m = media;
+        string name = HardwareDetector.DisplayName(request.Encoder);
+        void Report(int i, double p)
+        {
+            if (cts != hwCts) return;
+            hwPercent = (i + p) * 100 / todo.Count;
+            hwStatus = $"Measuring the {name} encoder at each quality ({i + 1} of {todo.Count})…";
+            Raise(nameof(IsChecking), nameof(CheckStatus), nameof(CheckPercent));
+        }
         try
         {
-            var sample = await Task.Run(() => SizeTargeting.SampleHardwareAsync(tools, m, request, null, cts.Token));
-            if (cts != hwCts) return;
-            hwSample = sample;
-            AppLog.Write($"GPU sample ({request.Encoder}, quality {request.Quality.HardwareQuality}): {sample.VideoKbps:0} kbps, {sample.Fps:0.#} fps.");
+            for (int i = 0; i < todo.Count; i++)
+            {
+                var (r, n) = (todo[i], i);
+                Report(n, 0);
+                var progress = new Progress<double>(p => Report(n, p)); // created here: reports land on the UI thread
+                var sample = await Task.Run(() => SizeTargeting.SampleHardwareAsync(tools, m, r, progress, cts.Token));
+                if (cts != hwCts) return;
+                hwSamples[(r.Encoder, r.Quality)] = sample;
+                AppLog.Write($"GPU sample ({r.Encoder}, quality {r.Quality.HardwareQuality}): {sample.VideoKbps:0} kbps, {sample.Fps:0.#} fps.");
+                Raise(nameof(EstimateLine));
+            }
         }
         catch (OperationCanceledException) { }
         catch (Exception ex) // async void: nothing may escape
         {
             AppLog.Write($"GPU sample failed: {ex.Message} {(ex as EncodeException)?.Details}");
-            if (cts == hwCts) hwError = ex.Message;
+            if (cts == hwCts) hwErrors[request.Encoder] = ex.Message;
         }
         finally
         {
             if (cts == hwCts)
             {
                 hwSampling = false;
-                Raise(nameof(EstimateLine));
+                Raise(nameof(IsChecking), nameof(CheckStatus), nameof(CheckPercent), nameof(EstimateLine));
             }
         }
     }
 
-    /// <summary>A new video invalidates the GPU sample.</summary>
-    void ResetHardwareSample()
+    /// <summary>Stops the GPU measurement; a later settings change resumes what is left.</summary>
+    void StopHardwareSample()
     {
         hwCts?.Cancel();
-        hwSample = null;
-        hwError = null;
-        hwSampling = false;
+        hwCts = null;
+        hwSampling = hwPending = false;
+        Raise(nameof(IsChecking), nameof(CheckStatus), nameof(CheckPercent));
+    }
+
+    /// <summary>A new video invalidates the GPU measurements.</summary>
+    void ResetHardwareSample()
+    {
+        StopHardwareSample();
+        hwSamples.Clear();
+        hwErrors.Clear();
         SampleHardware();
     }
 
@@ -517,6 +585,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         if (!CanStart) return;
         ErrorMessage = null;
         CanEncodeAnyway = false;
+        StopHardwareSample(); // a GPU sample would compete with the encode
         ResetProgress();
         cts = new CancellationTokenSource();
         State = JobState.Encoding;

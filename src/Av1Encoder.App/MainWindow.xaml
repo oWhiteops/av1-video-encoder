@@ -227,14 +227,14 @@
                             </TextBlock>
                             <!-- Quality check -->
                             <DockPanel Margin="0,4,0,0">
-                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding IsAnalyzing, Converter={StaticResource Vis}}">
+                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding IsChecking, Converter={StaticResource Vis}}">
                                     <Button Content="Cancel" Click="OnCancelAnalysis" Margin="8,0,0,0" />
                                     <Button Content="Skip" Click="OnSkipAnalysis" Margin="8,0,0,0" ToolTip="Stop and don't check future videos" />
                                 </StackPanel>
                                 <StackPanel>
-                                    <TextBlock Text="{Binding AnalysisStatus}" Style="{StaticResource Secondary}" />
-                                    <ProgressBar Value="{Binding AnalysisPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0"
-                                                 Visibility="{Binding IsAnalyzing, Converter={StaticResource Vis}}" />
+                                    <TextBlock Text="{Binding CheckStatus}" Style="{StaticResource Secondary}" />
+                                    <ProgressBar Value="{Binding CheckPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0"
+                                                 Visibility="{Binding IsChecking, Converter={StaticResource Vis}}" />
                                 </StackPanel>
                             </DockPanel>
                             <CheckBox Content="Skip the quality check (no size or time estimate; rougher Discord advice)" IsChecked="{Binding SkipQualityAnalysis}" Margin="0,8,0,0" />
@@ -397,18 +397,21 @@
                                 <StackPanel>
                                     <TextBlock Text="High Quality" FontWeight="SemiBold" />
                                     <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Near-transparent quality. Slower to encode." />
+                                    <TextBlock Text="{Binding HighQualityEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsBalanced}">
                                 <StackPanel>
                                     <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold" />
                                     <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Looks great, much smaller, reasonable speed." />
+                                    <TextBlock Text="{Binding BalancedEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsSmallest}">
                                 <StackPanel>
                                     <TextBlock Text="Smallest File" FontWeight="SemiBold" />
                                     <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Maximum savings, still clear. Some detail loss." />
+                                    <TextBlock Text="{Binding SmallestEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </RadioButton>
                         </UniformGrid>

@@ -123,10 +123,9 @@ public sealed partial class MainViewModel
     {
         CancelAnalysis();
         trimDebounce?.Cancel();
-        hwCts?.Cancel();
         media = null;
         complexity = null;
-        hwSample = null; hwError = null; hwSampling = false;
+        ResetHardwareSample();
         FileName = "";
         SourceInfo.Clear();
         OutputFileName = "";
@@ -167,6 +166,7 @@ public sealed partial class MainViewModel
         if (!CanStart) return;
         ErrorMessage = null;
         CanEncodeAnyway = false;
+        StopHardwareSample();
         foreach (var (item, _) in work) { item.Done = false; item.Status = "Waiting"; }
         cts = new CancellationTokenSource();
         var token = cts.Token;

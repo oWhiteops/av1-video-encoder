@@ -250,7 +250,7 @@ public sealed partial class MainViewModel
             settings.SkipQualityAnalysis = value;
             settings.Save();
             Raise(nameof(SkipQualityAnalysis));
-            if (value) CancelAnalysis(); else StartAnalysis();
+            if (value) CancelAnalysis(); else { StartAnalysis(); SampleHardware(); }
         }
     }
 
@@ -261,7 +261,12 @@ public sealed partial class MainViewModel
     string analysisStatus = "";
     public string AnalysisStatus { get => analysisStatus; private set => Set(ref analysisStatus, value); }
 
-    public void CancelAnalysis() => analysisCts?.Cancel();
+    /// <summary>Stops the CPU quality check and any GPU measurement.</summary>
+    public void CancelAnalysis()
+    {
+        analysisCts?.Cancel();
+        if (hwSampling || hwPending) { StopHardwareSample(); if (!IsAnalyzing) AnalysisStatus = "Quality check stopped."; }
+    }
 
     /// <summary>Skip: stop now and don't run it again until the box is unticked.</summary>
     public void SkipAnalysisNow() => SkipQualityAnalysis = true;

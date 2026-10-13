@@ -21,7 +21,8 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
    continue; Cancel stops the batch and keeps the videos already finished.
 3. Choose a preset. **Balanced** suits almost everything.
    Once a video is loaded, a few-second quality check estimates the output size and encoding time, for example
-   *Estimated output ≈ 14–21 MB · encoding time ≈ 1–2 min on this PC*. It updates as you change settings. On test
+   *Estimated output ≈ 14–21 MB · encoding time ≈ 1–2 min on this PC*, and each preset card shows its own size and
+   time so you can compare them. A GPU encoder is measured at all three presets in one go. It updates as you change settings. On test
    videos about 9 in 10 results landed inside the shown ranges; other programs running make encoding slower.
    The estimates learn from your encodes: after 3 finished encodes with an encoder, they are adjusted by how far
    off they were on this PC (the median of the last 30, at most 2x either way). The data is kept in
