@@ -43,11 +43,19 @@ public partial class MainWindow : Window
     void OnDragOver(object sender, DragEventArgs e)
     {
         e.Effects = vm.CanEdit && e.Data.GetDataPresent(DataFormats.FileDrop) ? DragDropEffects.Copy : DragDropEffects.None;
+        HighlightDropZone(e.Effects == DragDropEffects.Copy);
         e.Handled = true;
     }
 
+    void OnDragLeave(object sender, DragEventArgs e) => HighlightDropZone(false);
+
+    /// <summary>Accent border on the drop area while a droppable file is over the window.</summary>
+    void HighlightDropZone(bool on) =>
+        DropZone.SetResourceReference(System.Windows.Controls.Border.BorderBrushProperty, on ? "AccentFillColorDefaultBrush" : "ControlStrokeColorDefaultBrush");
+
     async void OnDrop(object sender, DragEventArgs e)
     {
+        HighlightDropZone(false);
         if (vm.CanEdit && e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
             await vm.AddAsync(files);
     }

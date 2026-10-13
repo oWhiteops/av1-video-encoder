@@ -4,4 +4,177 @@
              StartupUri="MainWindow.xaml"
              ThemeMode="System"
              DispatcherUnhandledException="OnUnhandledException">
+    <!--
+      Design system. Colours come only from the Fluent theme's semantic brushes (DynamicResource), so light, dark and
+      high-contrast modes and the user's Windows accent colour all work without per-theme values here. This file adds
+      what Fluent leaves to the app: a type ramp, a spacing scale, and the app's own components.
+    -->
+    <Application.Resources>
+        <BooleanToVisibilityConverter x:Key="Vis" />
+
+        <!-- Spacing scale: 4 / 8 / 12 / 16 / 24 -->
+        <Thickness x:Key="CardPadding">24,20,24,22</Thickness>
+        <Thickness x:Key="CardMargin">0,0,0,16</Thickness>
+        <Thickness x:Key="FieldGap">0,16,0,0</Thickness>
+        <Thickness x:Key="LabelGap">0,0,0,6</Thickness>
+        <Thickness x:Key="HelperGap">0,6,0,0</Thickness>
+        <CornerRadius x:Key="RadiusLg">8</CornerRadius>
+        <CornerRadius x:Key="RadiusMd">6</CornerRadius>
+        <!-- Readable line length on wide and maximized windows. -->
+        <system:Double x:Key="ContentMaxWidth" xmlns:system="clr-namespace:System;assembly=System.Runtime">980</system:Double>
+
+        <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
+
+        <!-- Type ramp (Windows 11): Title 28 · Section 18 · Body 14 · BodyStrong 14 · Caption 12 · Metric 18 -->
+        <Style x:Key="TitleText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="28" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <Style x:Key="BodyStrong" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <Style x:Key="Secondary" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <!-- Small labels and helper text. -->
+        <Style x:Key="StatLabel" TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
+            <Setter Property="FontSize" Value="12" />
+        </Style>
+        <!-- Field label above an input. -->
+        <Style x:Key="FieldLabel" TargetType="TextBlock" BasedOn="{StaticResource BodyStrong}">
+            <Setter Property="Margin" Value="{StaticResource LabelGap}" />
+        </Style>
+        <Style x:Key="StatValue" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Margin" Value="0,2,0,0" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <!-- A size/time estimate: accent-coloured so numbers read as results, not instructions. -->
+        <Style x:Key="EstimateText" TargetType="TextBlock" BasedOn="{StaticResource BodyStrong}">
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+        </Style>
+        <Style x:Key="Icon" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style x:Key="SectionIcon" TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+            <Setter Property="FontSize" Value="18" />
+            <Setter Property="Margin" Value="0,0,12,0" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+        </Style>
+        <!-- Hide a TextBlock while its text is empty (estimates and notes that appear later). -->
+        <Style x:Key="CollapseWhenEmpty" TargetType="TextBlock" BasedOn="{StaticResource EstimateText}">
+            <Style.Triggers>
+                <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
+            </Style.Triggers>
+        </Style>
+        <Style x:Key="HelperWhenNotEmpty" TargetType="TextBlock" BasedOn="{StaticResource StatLabel}">
+            <Style.Triggers>
+                <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Surfaces -->
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusLg}" />
+            <Setter Property="Padding" Value="{StaticResource CardPadding}" />
+            <Setter Property="Margin" Value="{StaticResource CardMargin}" />
+        </Style>
+        <!-- Inset panel inside a card (estimates, recommendation, batch totals). -->
+        <Style x:Key="Inset" TargetType="Border">
+            <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusMd}" />
+            <Setter Property="Padding" Value="16,12" />
+        </Style>
+        <!-- Status banners: icon + message, tinted by severity. Colour is never the only signal: each has its own icon. -->
+        <Style x:Key="Banner" TargetType="Border">
+            <Setter Property="CornerRadius" Value="{StaticResource RadiusLg}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="16,12" />
+            <Setter Property="Margin" Value="{StaticResource CardMargin}" />
+        </Style>
+        <Style x:Key="ErrorBanner" TargetType="Border" BasedOn="{StaticResource Banner}">
+            <Setter Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+        </Style>
+
+        <!--
+          Selectable card (mode, preset, Discord priority). Selection is shown three ways: accent border, accent tint and
+          a check badge, so it never relies on colour alone. Keyboard focus gets its own outer ring.
+        -->
+        <Style x:Key="PresetCard" TargetType="RadioButton">
+            <Setter Property="Margin" Value="0,0,8,0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="FocusVisualStyle" Value="{x:Null}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid>
+                            <Border x:Name="Bd" CornerRadius="{StaticResource RadiusLg}" BorderThickness="2" Padding="16,14,36,14"
+                                    Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    TextElement.Foreground="{DynamicResource TextFillColorPrimaryBrush}">
+                                <ContentPresenter />
+                            </Border>
+                            <Border x:Name="Tint" CornerRadius="{StaticResource RadiusLg}" Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                    Opacity="0" IsHitTestVisible="False" />
+                            <Border x:Name="Badge" Width="20" Height="20" CornerRadius="10" Margin="0,12,12,0" Visibility="Collapsed"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Background="{DynamicResource AccentFillColorDefaultBrush}">
+                                <TextBlock Style="{StaticResource Icon}" Text="&#xE73E;" FontSize="11" HorizontalAlignment="Center"
+                                           Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                            </Border>
+                            <Border x:Name="Focus" Margin="-4" CornerRadius="11" BorderThickness="2" Visibility="Collapsed" IsHitTestVisible="False"
+                                    BorderBrush="{DynamicResource FocusStrokeColorOuterBrush}" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillColorTertiaryBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Setter TargetName="Tint" Property="Opacity" Value="0.10" />
+                                <Setter TargetName="Badge" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Focus" Property="Visibility" Value="Visible" />
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter Property="Opacity" Value="0.5" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <!-- Card title + one-line description inside a PresetCard. -->
+        <Style x:Key="CardOptionTitle" TargetType="TextBlock" BasedOn="{StaticResource BodyStrong}">
+            <Setter Property="FontSize" Value="15" />
+        </Style>
+        <Style x:Key="CardOptionText" TargetType="TextBlock" BasedOn="{StaticResource StatLabel}">
+            <Setter Property="Margin" Value="0,4,0,0" />
+        </Style>
+    </Application.Resources>
 </Application>

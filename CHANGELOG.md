@@ -3,6 +3,20 @@
 How AV1 Video Encoder got from a single-video compressor to what it is now. Newest first. Versions follow
 `<Version>` in `src/Av1Encoder.App/Av1Encoder.App.csproj`; each release is built with `scripts\build.ps1`.
 
+## 1.9.0 — Redesigned interface
+
+- One design system in `App.xaml`: a Windows 11 type ramp (28 / 18 / 14 / 12), a 4–24 px spacing scale, shared
+  cards, inset panels and banners. Colours come only from the Fluent theme, so light, dark and the Windows accent
+  colour all work.
+- Selectable cards (mode, preset, Discord priority) show selection with an accent border, a tint and a check badge,
+  not colour alone, and have a separate keyboard focus ring. Their titles no longer render dimmed.
+- Every section has an icon and a clear title; estimates are accent-coloured so results stand out from instructions.
+- Progress and the result appear at the top while encoding and when done, instead of below the video details.
+- The status bar shows an icon for each state (ready, working, paused, done, failed, cancelled).
+- The drop area lights up while a file is dragged over the window.
+- Content stops at a readable width on wide or maximized windows; nothing clips at the minimum size.
+- Advanced options are grouped into Quality, Encoder and Audio; long helper texts were shortened.
+
 ## 1.8.1 — Fixes from testing
 
 - Folders are listed in episode order: sorted by file name, so `Season 1\S01E03` no longer comes before `S01E01`.

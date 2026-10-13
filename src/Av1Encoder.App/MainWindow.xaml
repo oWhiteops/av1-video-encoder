@@ -1,72 +1,13 @@
 ﻿<Window x:Class="Av1Encoder.App.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="AV1 Video Encoder" Width="800" Height="920" MinWidth="640" MinHeight="620"
-        WindowStartupLocation="CenterScreen" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
+        Title="AV1 Video Encoder" Width="900" Height="940" MinWidth="640" MinHeight="620"
+        WindowStartupLocation="CenterScreen" AllowDrop="True" DragOver="OnDragOver" DragLeave="OnDragLeave" Drop="OnDrop"
         Closing="OnClosing" Loaded="OnLoaded">
     <Window.TaskbarItemInfo>
         <TaskbarItemInfo ProgressValue="{Binding TaskbarProgress, Mode=OneWay}" ProgressState="{Binding TaskbarState, Mode=OneWay}" />
     </Window.TaskbarItemInfo>
-    <Window.Resources>
-        <BooleanToVisibilityConverter x:Key="Vis" />
-
-        <Style x:Key="Card" TargetType="Border">
-            <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
-            <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="8" />
-            <Setter Property="Padding" Value="20,16" />
-            <Setter Property="Margin" Value="0,0,0,12" />
-        </Style>
-        <Style x:Key="CardTitle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="16" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="0,0,0,12" />
-        </Style>
-        <Style x:Key="Secondary" TargetType="TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
-        <Style x:Key="StatLabel" TargetType="TextBlock" BasedOn="{StaticResource Secondary}">
-            <Setter Property="FontSize" Value="12" />
-        </Style>
-        <Style x:Key="StatValue" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="15" />
-            <Setter Property="FontWeight" Value="SemiBold" />
-            <Setter Property="Margin" Value="0,2,0,0" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-        </Style>
-
-        <Style x:Key="PresetCard" TargetType="RadioButton">
-            <Setter Property="Margin" Value="0,0,8,0" />
-            <Setter Property="Cursor" Value="Hand" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RadioButton">
-                        <Border x:Name="Bd" CornerRadius="8" BorderThickness="2" Padding="14,12"
-                                Background="{DynamicResource ControlFillColorDefaultBrush}"
-                                BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}">
-                            <ContentPresenter />
-                        </Border>
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Bd" Property="Background" Value="{DynamicResource ControlFillColorSecondaryBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsChecked" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsKeyboardFocused" Value="True">
-                                <Setter TargetName="Bd" Property="BorderBrush" Value="{DynamicResource AccentFillColorDefaultBrush}" />
-                            </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter Property="Opacity" Value="0.55" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-    </Window.Resources>
+    <!-- Shared tokens and components live in App.xaml. -->
 
     <Grid>
         <Grid.RowDefinitions>
@@ -75,55 +16,149 @@
         </Grid.RowDefinitions>
 
         <ScrollViewer VerticalScrollBarVisibility="Auto">
-            <StackPanel Margin="24,20,24,12">
+            <StackPanel Margin="24,24,24,8" MaxWidth="{StaticResource ContentMaxWidth}">
+
                 <!-- Header -->
-                <Grid Margin="0,0,0,16">
-                    <StackPanel>
-                        <TextBlock Text="AV1 Video Encoder" FontSize="26" FontWeight="SemiBold" />
+                <DockPanel Margin="0,0,0,20">
+                    <Button DockPanel.Dock="Right" VerticalAlignment="Center" Click="OnShowLog" ToolTip="Show the application log (FFmpeg commands and errors)"
+                            AutomationProperties.Name="View log">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Icon}" Text="&#xE9D9;" FontSize="14" Margin="0,0,8,0" />
+                            <TextBlock Text="View log" />
+                        </StackPanel>
+                    </Button>
+                    <Border DockPanel.Dock="Left" Width="44" Height="44" CornerRadius="10" Margin="0,0,14,0" VerticalAlignment="Center"
+                            Background="{DynamicResource AccentFillColorDefaultBrush}">
+                        <TextBlock Style="{StaticResource Icon}" Text="&#xE714;" FontSize="22" HorizontalAlignment="Center"
+                                   Foreground="{DynamicResource TextOnAccentFillColorPrimaryBrush}" />
+                    </Border>
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource TitleText}" Text="AV1 Video Encoder" />
                         <TextBlock Style="{StaticResource Secondary}" Margin="0,2,0,0"
                                    Text="Make videos smaller with modern AV1 compression. Everything stays on your PC." />
                     </StackPanel>
-                    <Button Content="View log" HorizontalAlignment="Right" VerticalAlignment="Top" Click="OnShowLog" />
-                </Grid>
+                </DockPanel>
 
                 <!-- Mode -->
                 <UniformGrid Columns="2" Margin="0,0,-8,16" IsEnabled="{Binding CanEdit}">
                     <RadioButton Style="{StaticResource PresetCard}" GroupName="Mode" IsChecked="{Binding IsCompressMode}" AutomationProperties.Name="Compress mode">
-                        <StackPanel>
-                            <TextBlock Text="Compress" FontWeight="SemiBold" />
-                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Make a video smaller at a chosen quality." />
-                        </StackPanel>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE73F;" VerticalAlignment="Top" Margin="0,2,12,0" />
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource CardOptionTitle}" Text="Compress" />
+                                <TextBlock Style="{StaticResource CardOptionText}" Text="Make videos smaller at a chosen quality. One video, many, or a whole folder." />
+                            </StackPanel>
+                        </DockPanel>
                     </RadioButton>
                     <RadioButton Style="{StaticResource PresetCard}" GroupName="Mode" IsChecked="{Binding IsDiscordMode}" AutomationProperties.Name="Video to Discord mode">
-                        <StackPanel>
-                            <TextBlock Text="Video to Discord" FontWeight="SemiBold" />
-                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Fit a video under an upload size limit." />
-                        </StackPanel>
+                        <DockPanel>
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE724;" VerticalAlignment="Top" Margin="0,2,12,0" />
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource CardOptionTitle}" Text="Video to Discord" />
+                                <TextBlock Style="{StaticResource CardOptionText}" Text="Fit one video under an upload size limit." />
+                            </StackPanel>
+                        </DockPanel>
                     </RadioButton>
                 </UniformGrid>
 
                 <!-- Error -->
-                <Border CornerRadius="8" Padding="16,12" Margin="0,0,0,12" BorderThickness="1"
-                        Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
-                        BorderBrush="{DynamicResource SystemFillColorCriticalBrush}"
-                        Visibility="{Binding HasError, Converter={StaticResource Vis}}">
+                <Border Style="{StaticResource ErrorBanner}" Visibility="{Binding HasError, Converter={StaticResource Vis}}">
                     <DockPanel>
-                        <TextBlock DockPanel.Dock="Left" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xEA39;" FontSize="16"
-                                   Foreground="{DynamicResource SystemFillColorCriticalBrush}" Margin="0,1,12,0" VerticalAlignment="Top" />
+                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource Icon}" Text="&#xEA39;" VerticalAlignment="Top" Margin="0,1,12,0"
+                                   Foreground="{DynamicResource SystemFillColorCriticalBrush}" />
                         <Button DockPanel.Dock="Bottom" HorizontalAlignment="Left" Margin="0,10,0,0" Content="Encode anyway at lower quality"
                                 Click="OnEncodeAnyway" Visibility="{Binding CanEncodeAnyway, Converter={StaticResource Vis}}" />
                         <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" />
                     </DockPanel>
                 </Border>
 
-                <!-- Source -->
+                <!-- Progress -->
+                <Border Style="{StaticResource Card}" Visibility="{Binding ShowProgress, Converter={StaticResource Vis}}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,12">
+                            <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="28" FontWeight="SemiBold" VerticalAlignment="Center"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE895;" />
+                            <TextBlock Text="{Binding StatusText}" Style="{StaticResource SectionTitle}" TextWrapping="Wrap" Margin="0,0,12,0" />
+                        </DockPanel>
+                        <Border Style="{StaticResource Inset}" Margin="0,0,0,14" Visibility="{Binding ShowBatchProgress, Converter={StaticResource Vis}}">
+                            <StackPanel>
+                                <TextBlock Text="{Binding BatchProgressText}" Style="{StaticResource BodyStrong}" Margin="0,0,0,8" />
+                                <ProgressBar Value="{Binding BatchPercent, Mode=OneWay}" Maximum="100" Height="6" />
+                            </StackPanel>
+                        </Border>
+                        <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Height="6" />
+                        <UniformGrid Columns="4" Margin="0,16,0,0">
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Elapsed" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ElapsedText}" Style="{StaticResource StatValue}" /></StackPanel>
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Remaining" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding RemainingText}" Style="{StaticResource StatValue}" /></StackPanel>
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Speed" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding SpeedText}" Style="{StaticResource StatValue}" /></StackPanel>
+                            <StackPanel><TextBlock Text="Output size" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding EstimateText}" Style="{StaticResource StatValue}" /></StackPanel>
+                        </UniformGrid>
+                        <TextBlock Style="{StaticResource StatLabel}" Margin="0,12,0,0"
+                                   Text="Time remaining and size are estimates and settle as encoding proceeds." />
+                    </StackPanel>
+                </Border>
+
+                <!-- Result -->
+                <Border Style="{StaticResource Card}" Visibility="{Binding ShowResult, Converter={StaticResource Vis}}"
+                        BorderBrush="{DynamicResource SystemFillColorSuccessBrush}">
+                    <StackPanel>
+                        <DockPanel Margin="0,0,0,16">
+                            <Button DockPanel.Dock="Right" Click="OnOpenFolder" Style="{DynamicResource AccentButtonStyle}" AutomationProperties.Name="Open folder">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE838;" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="Open folder" />
+                                </StackPanel>
+                            </Button>
+                            <Button DockPanel.Dock="Right" Click="OnCopyFile" Margin="0,0,8,0" AutomationProperties.Name="Copy file"
+                                    ToolTip="Copy the encoded file to the clipboard, to paste into Discord, an email or a folder">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE8C8;" FontSize="14" Margin="0,0,8,0" />
+                                    <TextBlock Text="Copy file" />
+                                </StackPanel>
+                            </Button>
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE930;" FontSize="22"
+                                       Foreground="{DynamicResource SystemFillColorSuccessBrush}" />
+                            <TextBlock Text="Encoding complete" Style="{StaticResource SectionTitle}" />
+                        </DockPanel>
+                        <UniformGrid Columns="3">
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Final size" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultSize}" Style="{StaticResource StatValue}" /></StackPanel>
+                            <StackPanel Margin="0,0,12,0"><TextBlock Text="{Binding ResultSavedLabel}" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultSaved}" Style="{StaticResource StatValue}" /></StackPanel>
+                            <StackPanel><TextBlock Text="{Binding ResultTimeLabel}" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultTime}" Style="{StaticResource StatValue}" /></StackPanel>
+                        </UniformGrid>
+                        <Border Style="{StaticResource Inset}" Margin="0,16,0,0" Visibility="{Binding HasResultNotes, Converter={StaticResource Vis}}">
+                            <TextBlock Style="{StaticResource Secondary}" Text="{Binding ResultNotes}" />
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- Video -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
-                        <TextBlock Text="Video" Style="{StaticResource CardTitle}" />
-                        <Border x:Name="DropZone" CornerRadius="8" BorderThickness="2" Padding="24,28" Cursor="Hand"
+                        <DockPanel Margin="0,0,0,16">
+                            <!-- Batch actions -->
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding IsBatch, Converter={StaticResource Vis}}">
+                                <Button Content="Add videos…" Click="OnBrowseInput" IsEnabled="{Binding CanEdit}" />
+                                <Button Content="Add folder…" Click="OnBrowseFolder" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0" />
+                                <Button Content="Clear all" Click="OnClearQueue" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0" />
+                            </StackPanel>
+                            <!-- Single-video actions -->
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding ShowSingle, Converter={StaticResource Vis}}">
+                                <Button Content="Add more…" Click="OnBrowseInput" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0"
+                                        Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}" ToolTip="Add more videos to compress as a batch" />
+                                <Button Content="Add folder…" Click="OnBrowseFolder" IsEnabled="{Binding CanEdit}" Margin="0,0,8,0"
+                                        Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}" ToolTip="Add every video in a folder to compress as a batch" />
+                                <Button Content="Remove" Click="OnRemoveVideo" IsEnabled="{Binding CanEdit}" ToolTip="Remove this video so you can add a different one" />
+                            </StackPanel>
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE8B2;" />
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Video" />
+                        </DockPanel>
+
+                        <!-- Empty: drop zone -->
+                        <Border x:Name="DropZone" CornerRadius="{StaticResource RadiusLg}" BorderThickness="2" Padding="24,36" Cursor="Hand"
                                 BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
                                 Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                MouseLeftButtonUp="OnBrowseInput">
+                                MouseLeftButtonUp="OnBrowseInput" AutomationProperties.Name="Drop videos here or click to browse">
                             <Border.Style>
                                 <Style TargetType="Border">
                                     <Setter Property="Visibility" Value="Visible" />
@@ -135,14 +170,19 @@
                                 </Style>
                             </Border.Style>
                             <StackPanel HorizontalAlignment="Center">
-                                <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xE8B2;" FontSize="36"
-                                           HorizontalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" />
-                                <TextBlock Text="Drag videos here" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
+                                <Border Width="64" Height="64" CornerRadius="32" HorizontalAlignment="Center"
+                                        Background="{DynamicResource ControlFillColorDefaultBrush}">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE898;" FontSize="28" HorizontalAlignment="Center"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                </Border>
+                                <TextBlock Text="Drag videos here" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,14,0,4" />
                                 <TextBlock Style="{StaticResource Secondary}" HorizontalAlignment="Center" TextAlignment="Center"
-                                           Text="or click to browse · MP4, MOV, MKV, AVI, WebM and more · several videos or a folder to compress a batch" />
+                                           Text="or click to browse" />
+                                <TextBlock Style="{StaticResource StatLabel}" HorizontalAlignment="Center" TextAlignment="Center" Margin="0,10,0,0"
+                                           Text="MP4, MOV, MKV, AVI, WebM and more · several videos or a folder make a batch" />
                             </StackPanel>
                         </Border>
-                        <Button Content="Choose a folder…" Click="OnBrowseFolder" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Center" Margin="0,10,0,0"
+                        <Button Content="Choose a folder…" Click="OnBrowseFolder" IsEnabled="{Binding CanEdit}" HorizontalAlignment="Center" Margin="0,12,0,0"
                                 ToolTip="Add every video in a folder and its subfolders">
                             <Button.Style>
                                 <Style TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
@@ -162,25 +202,22 @@
 
                         <!-- Batch -->
                         <StackPanel Visibility="{Binding IsBatch, Converter={StaticResource Vis}}">
-                            <DockPanel Margin="0,0,0,8">
-                                <Button DockPanel.Dock="Right" Content="Clear all" Click="OnClearQueue" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0" />
-                                <Button DockPanel.Dock="Right" Content="Add folder…" Click="OnBrowseFolder" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0" />
-                                <Button DockPanel.Dock="Right" Content="Add videos…" Click="OnBrowseInput" IsEnabled="{Binding CanEdit}" />
-                                <TextBlock Text="{Binding BatchSummary}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
-                            </DockPanel>
+                            <TextBlock Text="{Binding BatchSummary}" Style="{StaticResource BodyStrong}" FontSize="15" Margin="0,0,0,8" />
                             <ItemsControl ItemsSource="{Binding Queue}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,8">
+                                        <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,10">
                                             <DockPanel>
-                                                <Button DockPanel.Dock="Right" Click="OnRemoveFromQueue" VerticalAlignment="Center" Padding="8,4"
-                                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE711;" ToolTip="Remove from the list"
+                                                <Button DockPanel.Dock="Right" Click="OnRemoveFromQueue" VerticalAlignment="Center" Padding="10,6"
+                                                        FontFamily="{StaticResource IconFont}" Content="&#xE711;" ToolTip="Remove from the list"
                                                         AutomationProperties.Name="{Binding Name, StringFormat=Remove {0}}"
                                                         IsEnabled="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                <TextBlock DockPanel.Dock="Left" Style="{StaticResource Icon}" Text="&#xE714;" VerticalAlignment="Top" Margin="0,2,12,0"
+                                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                                                 <StackPanel Margin="0,0,12,0">
-                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Name}" Style="{StaticResource BodyStrong}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
                                                     <TextBlock Text="{Binding Details}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
-                                                    <TextBlock Text="{Binding EstimateText}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
+                                                    <TextBlock Text="{Binding EstimateText}" Style="{StaticResource CollapseWhenEmpty}" FontSize="12" Margin="0,4,0,0" />
                                                     <TextBlock Text="{Binding Status}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
                                                 </StackPanel>
                                             </DockPanel>
@@ -188,159 +225,117 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Text="{Binding BatchEstimate}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0" />
-                            <TextBlock Text="{Binding BatchSaving}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,0" />
-                            <DockPanel Margin="0,4,0,0" Visibility="{Binding HasLowSaving, Converter={StaticResource Vis}}">
-                                <Button DockPanel.Dock="Right" Content="Remove them" Click="OnRemoveLowSaving" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0" />
-                                <TextBlock Text="{Binding LowSavingNote}" Style="{StaticResource Secondary}" TextWrapping="Wrap" VerticalAlignment="Center" />
-                            </DockPanel>
-                            <DockPanel Margin="0,6,0,0" Visibility="{Binding IsBatchChecking, Converter={StaticResource Vis}}">
-                                <Button DockPanel.Dock="Right" Content="Cancel" Click="OnCancelBatchCheck" Margin="8,0,0,0" />
+
+                            <!-- Totals -->
+                            <Border Style="{StaticResource Inset}" Margin="0,8,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding BatchCheckStatus}" Style="{StaticResource Secondary}" TextTrimming="CharacterEllipsis" />
-                                    <ProgressBar Value="{Binding BatchCheckPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0" />
+                                    <TextBlock Text="{Binding BatchEstimate}" Style="{StaticResource CollapseWhenEmpty}" />
+                                    <TextBlock Text="{Binding BatchSaving}" Style="{StaticResource CollapseWhenEmpty}" Margin="0,4,0,0" />
+                                    <DockPanel Margin="0,8,0,0" Visibility="{Binding HasLowSaving, Converter={StaticResource Vis}}">
+                                        <Button DockPanel.Dock="Right" Content="Remove them" Click="OnRemoveLowSaving" IsEnabled="{Binding CanEdit}" Margin="12,0,0,0" />
+                                        <TextBlock DockPanel.Dock="Left" Style="{StaticResource Icon}" Text="&#xE7BA;" Margin="0,0,8,0"
+                                                   Foreground="{DynamicResource SystemFillColorCautionBrush}" />
+                                        <TextBlock Text="{Binding LowSavingNote}" Style="{StaticResource Secondary}" VerticalAlignment="Center" />
+                                    </DockPanel>
+                                    <DockPanel Margin="0,8,0,0" Visibility="{Binding IsBatchChecking, Converter={StaticResource Vis}}">
+                                        <Button DockPanel.Dock="Right" Content="Cancel" Click="OnCancelBatchCheck" Margin="12,0,0,0" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding BatchCheckStatus}" Style="{StaticResource Secondary}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
+                                            <ProgressBar Value="{Binding BatchCheckPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,8,0,0"
+                                               Text="Encoded one after another with the settings below. Each video gets a quick check; totals for unchecked videos are extrapolated." />
                                 </StackPanel>
-                            </DockPanel>
-                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,8,0,0" TextWrapping="Wrap"
-                                       Text="Videos are encoded one after another with the quality, encoder and audio settings below. Each video gets a quick check (a few seconds) for its estimate; totals for videos not checked yet are extrapolated." />
+                            </Border>
                         </StackPanel>
 
+                        <!-- Single video -->
                         <StackPanel Visibility="{Binding ShowSingle, Converter={StaticResource Vis}}">
-                            <DockPanel Margin="0,0,0,12">
-                                <Button DockPanel.Dock="Right" Content="Remove" Click="OnRemoveVideo" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0"
-                                        ToolTip="Remove this video so you can add a different one" />
-                                <Button DockPanel.Dock="Right" Content="Add folder…" Click="OnBrowseFolder" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0"
-                                        Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}" ToolTip="Add every video in a folder to compress as a batch" />
-                                <Button DockPanel.Dock="Right" Content="Add more…" Click="OnBrowseInput" IsEnabled="{Binding CanEdit}"
-                                        Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}" ToolTip="Add more videos to compress as a batch" />
-                                <TextBlock Text="{Binding FileName}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
-                            </DockPanel>
+                            <TextBlock Text="{Binding FileName}" Style="{StaticResource BodyStrong}" FontSize="15" TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis" Margin="0,0,0,12" />
                             <ItemsControl ItemsSource="{Binding SourceInfo}">
                                 <ItemsControl.ItemsPanel>
-                                    <ItemsPanelTemplate><UniformGrid Columns="2" /></ItemsPanelTemplate>
+                                    <ItemsPanelTemplate><UniformGrid Columns="3" /></ItemsPanelTemplate>
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <StackPanel Margin="0,0,16,10">
+                                        <StackPanel Margin="0,0,16,12">
                                             <TextBlock Text="{Binding Label}" Style="{StaticResource StatLabel}" />
-                                            <TextBlock Text="{Binding Value}" TextWrapping="Wrap" Margin="0,1,0,0" />
+                                            <TextBlock Text="{Binding Value}" TextWrapping="Wrap" Margin="0,2,0,0" />
                                         </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
                             <!-- Estimate + quality check (both modes) -->
-                            <TextBlock Text="{Binding EstimateLine}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,0">
-                                <TextBlock.Style>
-                                    <Style TargetType="TextBlock">
-                                        <Style.Triggers>
-                                            <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
-                                        </Style.Triggers>
-                                    </Style>
-                                </TextBlock.Style>
-                            </TextBlock>
-                            <!-- Quality check -->
-                            <DockPanel Margin="0,4,0,0">
-                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding IsChecking, Converter={StaticResource Vis}}">
-                                    <Button Content="Cancel" Click="OnCancelAnalysis" Margin="8,0,0,0" />
-                                    <Button Content="Skip" Click="OnSkipAnalysis" Margin="8,0,0,0" ToolTip="Stop and don't check future videos" />
-                                </StackPanel>
+                            <Border Style="{StaticResource Inset}" Margin="0,4,0,0">
                                 <StackPanel>
-                                    <TextBlock Text="{Binding CheckStatus}" Style="{StaticResource Secondary}" />
-                                    <ProgressBar Value="{Binding CheckPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0"
-                                                 Visibility="{Binding IsChecking, Converter={StaticResource Vis}}" />
+                                    <TextBlock Text="{Binding EstimateLine}" Style="{StaticResource CollapseWhenEmpty}" Margin="0,0,0,6" />
+                                    <DockPanel>
+                                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Visibility="{Binding IsChecking, Converter={StaticResource Vis}}">
+                                            <Button Content="Cancel" Click="OnCancelAnalysis" Margin="12,0,0,0" />
+                                            <Button Content="Skip" Click="OnSkipAnalysis" Margin="8,0,0,0" ToolTip="Stop and don't check future videos" />
+                                        </StackPanel>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding CheckStatus}" Style="{StaticResource StatLabel}" />
+                                            <ProgressBar Value="{Binding CheckPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0"
+                                                         Visibility="{Binding IsChecking, Converter={StaticResource Vis}}" />
+                                        </StackPanel>
+                                    </DockPanel>
                                 </StackPanel>
-                            </DockPanel>
-                            <CheckBox Content="Skip the quality check (no size or time estimate; rougher Discord advice)" IsChecked="{Binding SkipQualityAnalysis}" Margin="0,8,0,0" />
+                            </Border>
+                            <CheckBox Content="Skip the quality check (no size or time estimate; rougher Discord advice)" IsChecked="{Binding SkipQualityAnalysis}" Margin="0,10,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
 
-                <!-- Progress -->
-                <Border Style="{StaticResource Card}" Visibility="{Binding ShowProgress, Converter={StaticResource Vis}}">
-                    <StackPanel>
-                        <DockPanel Margin="0,0,0,10">
-                            <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="16" FontWeight="SemiBold" />
-                            <TextBlock Text="{Binding StatusText}" FontSize="16" FontWeight="SemiBold" />
-                        </DockPanel>
-                        <StackPanel Margin="0,0,0,12" Visibility="{Binding ShowBatchProgress, Converter={StaticResource Vis}}">
-                            <TextBlock Text="{Binding BatchProgressText}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6" />
-                            <ProgressBar Value="{Binding BatchPercent, Mode=OneWay}" Maximum="100" Height="6" />
-                        </StackPanel>
-                        <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Height="6" />
-                        <UniformGrid Columns="4" Margin="0,14,0,0">
-                            <StackPanel><TextBlock Text="Elapsed" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ElapsedText}" Style="{StaticResource StatValue}" /></StackPanel>
-                            <StackPanel><TextBlock Text="Remaining" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding RemainingText}" Style="{StaticResource StatValue}" /></StackPanel>
-                            <StackPanel><TextBlock Text="Speed" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding SpeedText}" Style="{StaticResource StatValue}" /></StackPanel>
-                            <StackPanel><TextBlock Text="Output size" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding EstimateText}" Style="{StaticResource StatValue}" /></StackPanel>
-                        </UniformGrid>
-                        <TextBlock Style="{StaticResource StatLabel}" Margin="0,10,0,0"
-                                   Text="Progress, time remaining and size are estimates and settle as encoding proceeds." />
-                    </StackPanel>
-                </Border>
-
-                <!-- Result -->
-                <Border Style="{StaticResource Card}" Visibility="{Binding ShowResult, Converter={StaticResource Vis}}">
-                    <StackPanel>
-                        <DockPanel Margin="0,0,0,12">
-                            <TextBlock DockPanel.Dock="Left" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xE930;" FontSize="20"
-                                       Foreground="{DynamicResource SystemFillColorSuccessBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
-                            <Button DockPanel.Dock="Right" Content="Open folder" Click="OnOpenFolder" Style="{DynamicResource AccentButtonStyle}" />
-                            <Button DockPanel.Dock="Right" Content="Copy file" Click="OnCopyFile" Margin="0,0,8,0"
-                                    ToolTip="Copy the encoded file to the clipboard, to paste into Discord, an email or a folder" />
-                            <TextBlock Text="Encoding complete" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
-                        </DockPanel>
-                        <UniformGrid Columns="3">
-                            <StackPanel Margin="0,0,12,0"><TextBlock Text="Final size" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultSize}" Style="{StaticResource StatValue}" /></StackPanel>
-                            <StackPanel Margin="0,0,12,0"><TextBlock Text="{Binding ResultSavedLabel}" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultSaved}" Style="{StaticResource StatValue}" /></StackPanel>
-                            <StackPanel><TextBlock Text="{Binding ResultTimeLabel}" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ResultTime}" Style="{StaticResource StatValue}" /></StackPanel>
-                        </UniformGrid>
-                        <TextBlock Style="{StaticResource Secondary}" Margin="0,12,0,0" Text="{Binding ResultNotes}"
-                                   Visibility="{Binding HasResultNotes, Converter={StaticResource Vis}}" />
-                    </StackPanel>
-                </Border>
                 <!-- Discord -->
                 <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEdit}" Visibility="{Binding IsDiscordMode, Converter={StaticResource Vis}}">
                     <StackPanel>
-                        <TextBlock Text="Discord upload" Style="{StaticResource CardTitle}" />
-                        <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,12" Visibility="{Binding ShowDiscordBatchNote, Converter={StaticResource Vis}}"
-                                   Text="Video to Discord works on one video at a time. Remove videos from the list until one is left, or switch to Compress to encode them all." />
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE724;" />
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Discord upload" />
+                        </DockPanel>
+                        <Border Style="{StaticResource Inset}" Margin="0,0,0,16" Visibility="{Binding ShowDiscordBatchNote, Converter={StaticResource Vis}}">
+                            <TextBlock Style="{StaticResource Secondary}"
+                                       Text="Video to Discord works on one video at a time. Remove videos from the list until one is left, or switch to Compress to encode them all." />
+                        </Border>
 
-                        <TextBlock Text="Size limit" Style="{StaticResource StatLabel}" Margin="0,0,0,6" />
+                        <TextBlock Text="Size limit" Style="{StaticResource FieldLabel}" />
                         <WrapPanel>
-                            <RadioButton GroupName="Target" Content="Discord Free (19 MB)" IsChecked="{Binding UseFreeTarget}" VerticalAlignment="Center" Margin="0,0,20,0" />
+                            <RadioButton GroupName="Target" Content="Discord Free (19 MB)" IsChecked="{Binding UseFreeTarget}" VerticalAlignment="Center" Margin="0,0,24,0" />
                             <RadioButton GroupName="Target" Content="Custom" IsChecked="{Binding UseCustomTarget}" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBox Width="90" Text="{Binding CustomTargetText, UpdateSourceTrigger=PropertyChanged}" IsEnabled="{Binding UseCustomTarget}"
                                      AutomationProperties.Name="Custom size limit in MB" VerticalAlignment="Center" />
-                            <TextBlock Text="MB" VerticalAlignment="Center" Margin="6,0,16,0" />
+                            <TextBlock Text="MB" VerticalAlignment="Center" Margin="8,0,16,0" />
                             <TextBlock Text="{Binding TargetBytesText}" Style="{StaticResource StatLabel}" VerticalAlignment="Center" />
                         </WrapPanel>
                         <TextBlock Text="{Binding SizeLine}" Style="{StaticResource Secondary}" Margin="0,8,0,0" />
 
-                        <TextBlock Text="Priority" Style="{StaticResource StatLabel}" Margin="0,16,0,6" />
+                        <TextBlock Text="Priority" Style="{StaticResource FieldLabel}" Margin="0,20,0,8" />
                         <UniformGrid Columns="3" Margin="0,0,-8,0">
-                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsBestStrategy}">
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsBestStrategy}" AutomationProperties.Name="Best Quality priority">
                                 <StackPanel>
-                                    <TextBlock Text="Best Quality" FontWeight="SemiBold" />
-                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Sharpest result. Slowest; suggests trimming first." />
+                                    <TextBlock Style="{StaticResource CardOptionTitle}" Text="Best Quality" />
+                                    <TextBlock Style="{StaticResource CardOptionText}" Text="Sharpest result. Slowest; suggests trimming first." />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsBalancedStrategy}">
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsBalancedStrategy}" AutomationProperties.Name="Balanced priority">
                                 <StackPanel>
-                                    <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold" />
-                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Good quality at a reasonable speed." />
+                                    <TextBlock Style="{StaticResource CardOptionTitle}" Text="Balanced" />
+                                    <TextBlock Style="{StaticResource CardOptionText}" Text="Recommended. Good quality at a reasonable speed." />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsFastestStrategy}">
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Strategy" IsChecked="{Binding IsFastestStrategy}" AutomationProperties.Name="Fastest priority">
                                 <StackPanel>
-                                    <TextBlock Text="Fastest" FontWeight="SemiBold" />
-                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Quickest encode; a little softer." />
+                                    <TextBlock Style="{StaticResource CardOptionTitle}" Text="Fastest" />
+                                    <TextBlock Style="{StaticResource CardOptionText}" Text="Quickest encode; a little softer." />
                                 </StackPanel>
                             </RadioButton>
                         </UniformGrid>
 
                         <!-- Recommendation -->
-                        <Border CornerRadius="8" Padding="16,12" Margin="0,16,0,0" BorderThickness="1"
+                        <Border CornerRadius="{StaticResource RadiusMd}" Padding="16,12" Margin="0,16,0,0" BorderThickness="1"
                                 Visibility="{Binding HasPlan, Converter={StaticResource Vis}}">
                             <Border.Style>
                                 <Style TargetType="Border">
@@ -354,20 +349,36 @@
                                     </Style.Triggers>
                                 </Style>
                             </Border.Style>
-                            <StackPanel>
-                                <TextBlock Text="{Binding PlanHeadline}" FontWeight="SemiBold" TextWrapping="Wrap" />
-                                <TextBlock Text="{Binding PlanSummary}" TextWrapping="Wrap" Margin="0,4,0,0" />
-                                <TextBlock Text="{Binding PlanAdvice}" Style="{StaticResource Secondary}" Margin="0,8,0,0"
-                                           Visibility="{Binding HasPlanAdvice, Converter={StaticResource Vis}}" />
-                                <TextBlock Text="{Binding PlanWarnings}" Style="{StaticResource Secondary}" Margin="0,8,0,0"
-                                           Visibility="{Binding HasPlanWarnings, Converter={StaticResource Vis}}" />
-                            </StackPanel>
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Left" VerticalAlignment="Top" Margin="0,1,12,0">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                                            <Setter Property="Text" Value="&#xE946;" />
+                                            <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding PlanIsRisky}" Value="True">
+                                                    <Setter Property="Text" Value="&#xE7BA;" />
+                                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                                <StackPanel>
+                                    <TextBlock Text="{Binding PlanHeadline}" Style="{StaticResource BodyStrong}" />
+                                    <TextBlock Text="{Binding PlanSummary}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                    <TextBlock Text="{Binding PlanAdvice}" Style="{StaticResource Secondary}" Margin="0,8,0,0"
+                                               Visibility="{Binding HasPlanAdvice, Converter={StaticResource Vis}}" />
+                                    <TextBlock Text="{Binding PlanWarnings}" Style="{StaticResource Secondary}" Margin="0,8,0,0"
+                                               Visibility="{Binding HasPlanWarnings, Converter={StaticResource Vis}}" />
+                                </StackPanel>
+                            </DockPanel>
                         </Border>
                         <TextBlock Text="{Binding PlanError}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,12,0,0"
                                    Visibility="{Binding HasPlanError, Converter={StaticResource Vis}}" />
 
                         <!-- Trim -->
-                        <TextBlock Text="Trim" Style="{StaticResource StatLabel}" Margin="0,16,0,6" />
+                        <TextBlock Text="Trim" Style="{StaticResource FieldLabel}" Margin="0,20,0,8" />
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="24" />
@@ -379,28 +390,38 @@
                             <TextBlock Grid.Column="3" Text="End" VerticalAlignment="Center" Margin="0,0,8,0" />
                             <TextBox Grid.Column="4" Width="100" Text="{Binding TrimEndText, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Trim end" />
                             <TextBlock Grid.Column="5" Text="{Binding SelectedDurationText}" Style="{StaticResource Secondary}" VerticalAlignment="Center" Margin="16,0,0,0" />
-                            <Image Grid.Row="1" Grid.ColumnSpan="2" Source="{Binding StartFrame}" Height="90" HorizontalAlignment="Left" Margin="0,8,0,0" ToolTip="First frame of the selection" />
-                            <Image Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="2" Source="{Binding EndFrame}" Height="90" HorizontalAlignment="Left" Margin="0,8,0,0" ToolTip="Last frame of the selection" />
+                            <Border Grid.Row="1" Grid.ColumnSpan="2" CornerRadius="{StaticResource RadiusMd}" ClipToBounds="True" HorizontalAlignment="Left" Margin="0,10,0,0">
+                                <Image Source="{Binding StartFrame}" Height="90" ToolTip="First frame of the selection" />
+                            </Border>
+                            <Border Grid.Row="1" Grid.Column="3" Grid.ColumnSpan="2" CornerRadius="{StaticResource RadiusMd}" ClipToBounds="True" HorizontalAlignment="Left" Margin="0,10,0,0">
+                                <Image Source="{Binding EndFrame}" Height="90" ToolTip="Last frame of the selection" />
+                            </Border>
                         </Grid>
                         <TextBlock Text="{Binding TrimError}" Foreground="{DynamicResource SystemFillColorCriticalBrush}" TextWrapping="Wrap" Margin="0,6,0,0"
                                    Visibility="{Binding HasTrimError, Converter={StaticResource Vis}}" />
-                        <TextBlock Style="{StaticResource StatLabel}" Margin="0,6,0,0" Text="Times as m:ss, for example 1:05.5. Nothing is cut unless you change these." />
+                        <TextBlock Style="{StaticResource StatLabel}" Margin="{StaticResource HelperGap}" Text="Times as m:ss, for example 1:05.5. Nothing is cut unless you change these." />
 
                         <!-- Overrides -->
-                        <Expander Header="Adjust resolution, frame rate and audio" Margin="0,14,0,0">
-                            <Grid Margin="0,10,0,0">
-                                <Grid.ColumnDefinitions><ColumnDefinition Width="110" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                        <Expander Margin="0,20,0,0" AutomationProperties.Name="Adjust resolution, frame rate and audio">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE713;" Margin="0,0,10,0" />
+                                    <TextBlock Text="Adjust resolution, frame rate and audio" />
+                                </StackPanel>
+                            </Expander.Header>
+                            <Grid Margin="0,12,0,0">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="120" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
                                 <Grid.RowDefinitions><RowDefinition /><RowDefinition /><RowDefinition /><RowDefinition /></Grid.RowDefinitions>
                                 <TextBlock Text="Resolution" VerticalAlignment="Center" />
                                 <ComboBox Grid.Column="1" ItemsSource="{Binding ResolutionChoices}" SelectedItem="{Binding SelectedResolution}" DisplayMemberPath="Label"
-                                          HorizontalAlignment="Left" MinWidth="240" Margin="0,0,0,8" AutomationProperties.Name="Resolution" />
+                                          HorizontalAlignment="Left" MinWidth="260" Margin="0,0,0,8" AutomationProperties.Name="Resolution" />
                                 <TextBlock Grid.Row="1" Text="Frame rate" VerticalAlignment="Center" />
                                 <ComboBox Grid.Row="1" Grid.Column="1" ItemsSource="{Binding FrameRateChoices}" SelectedItem="{Binding SelectedFrameRate}" DisplayMemberPath="Label"
-                                          HorizontalAlignment="Left" MinWidth="240" Margin="0,0,0,8" AutomationProperties.Name="Frame rate" />
+                                          HorizontalAlignment="Left" MinWidth="260" Margin="0,0,0,8" AutomationProperties.Name="Frame rate" />
                                 <TextBlock Grid.Row="2" Text="Audio" VerticalAlignment="Center" />
                                 <ComboBox Grid.Row="2" Grid.Column="1" ItemsSource="{Binding AudioChoices}" SelectedItem="{Binding SelectedAudio}" DisplayMemberPath="Label"
-                                          HorizontalAlignment="Left" MinWidth="240" Margin="0,0,0,8" AutomationProperties.Name="Audio" />
-                                <Button Grid.Row="3" Grid.Column="1" Content="Reset to recommended" Click="OnResetOverrides" HorizontalAlignment="Left" />
+                                          HorizontalAlignment="Left" MinWidth="260" Margin="0,0,0,8" AutomationProperties.Name="Audio" />
+                                <Button Grid.Row="3" Grid.Column="1" Content="Reset to recommended" Click="OnResetOverrides" HorizontalAlignment="Left" Margin="0,4,0,0" />
                             </Grid>
                         </Expander>
                     </StackPanel>
@@ -409,33 +430,45 @@
                 <!-- Quality -->
                 <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEdit}" Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}">
                     <StackPanel>
-                        <TextBlock Text="Quality" Style="{StaticResource CardTitle}" />
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE9E9;" />
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Quality" />
+                        </DockPanel>
                         <UniformGrid Columns="3" Margin="0,0,-8,0">
                             <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsHighQuality}" AutomationProperties.Name="High Quality">
                                 <StackPanel>
-                                    <TextBlock Text="High Quality" FontWeight="SemiBold" />
-                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Near-transparent quality. Slower to encode." />
-                                    <TextBlock Text="{Binding HighQualityEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Style="{StaticResource CardOptionTitle}" Text="High Quality" />
+                                    <TextBlock Style="{StaticResource CardOptionText}" Text="Near-transparent quality. Slower to encode." />
+                                    <TextBlock Text="{Binding HighQualityEstimate}" Style="{StaticResource CollapseWhenEmpty}" Margin="0,10,0,0" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsBalanced}" AutomationProperties.Name="Balanced">
                                 <StackPanel>
-                                    <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold" />
-                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Looks great, much smaller, reasonable speed." />
-                                    <TextBlock Text="{Binding BalancedEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Style="{StaticResource CardOptionTitle}" Text="Balanced" />
+                                    <TextBlock Style="{StaticResource CardOptionText}" Text="Recommended. Looks great, much smaller, reasonable speed." />
+                                    <TextBlock Text="{Binding BalancedEstimate}" Style="{StaticResource CollapseWhenEmpty}" Margin="0,10,0,0" />
                                 </StackPanel>
                             </RadioButton>
                             <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsSmallest}" AutomationProperties.Name="Smallest File">
                                 <StackPanel>
-                                    <TextBlock Text="Smallest File" FontWeight="SemiBold" />
-                                    <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Maximum savings, still clear. Some detail loss." />
-                                    <TextBlock Text="{Binding SmallestEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
+                                    <TextBlock Style="{StaticResource CardOptionTitle}" Text="Smallest File" />
+                                    <TextBlock Style="{StaticResource CardOptionText}" Text="Maximum savings, still clear. Some detail loss." />
+                                    <TextBlock Text="{Binding SmallestEstimate}" Style="{StaticResource CollapseWhenEmpty}" Margin="0,10,0,0" />
                                 </StackPanel>
                             </RadioButton>
                         </UniformGrid>
 
-                        <Expander Header="Advanced options" Margin="0,14,0,0">
-                            <StackPanel Margin="0,10,0,0">
+                        <Expander Margin="0,20,0,0" AutomationProperties.Name="Advanced options">
+                            <Expander.Header>
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Style="{StaticResource Icon}" Text="&#xE713;" Margin="0,0,10,0" />
+                                    <TextBlock Text="Advanced options" />
+                                    <TextBlock Style="{StaticResource StatLabel}" Text="  ·  custom quality, encoder, audio" VerticalAlignment="Center" />
+                                </StackPanel>
+                            </Expander.Header>
+                            <StackPanel Margin="0,12,0,0">
+                                <!-- Custom quality -->
+                                <TextBlock Text="Quality" Style="{StaticResource FieldLabel}" />
                                 <CheckBox Content="Use custom quality instead of a preset" IsChecked="{Binding UseCustom}" />
                                 <Grid Margin="28,8,0,0" IsEnabled="{Binding UseCustom}">
                                     <Grid.Style>
@@ -446,7 +479,7 @@
                                         </Style>
                                     </Grid.Style>
                                     <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="150" />
+                                        <ColumnDefinition Width="140" />
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="44" />
                                     </Grid.ColumnDefinitions>
@@ -457,7 +490,7 @@
                                     <Slider Grid.Column="1" Minimum="10" Maximum="60" IsSnapToTickEnabled="True" TickFrequency="1"
                                             Value="{Binding CustomCrf}" VerticalAlignment="Center" AutomationProperties.Name="Quality CRF" />
                                     <TextBlock Grid.Column="2" Text="{Binding CustomCrf}" VerticalAlignment="Center" HorizontalAlignment="Right" FontWeight="SemiBold" />
-                                    <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource StatLabel}" Margin="0,0,0,8"
+                                    <TextBlock Grid.Row="1" Grid.Column="1" Style="{StaticResource StatLabel}" Margin="0,0,0,10"
                                                Text="{Binding CrfHint, Mode=OneWay}" />
                                     <TextBlock Grid.Row="2" Text="Encoder speed" VerticalAlignment="Center" />
                                     <Slider Grid.Row="2" Grid.Column="1" Minimum="2" Maximum="12" IsSnapToTickEnabled="True" TickFrequency="1"
@@ -467,22 +500,17 @@
                                                Text="SVT-AV1 preset. Lower = slower but slightly smaller files." />
                                 </Grid>
 
-                                <TextBlock Text="Encoder" Margin="0,16,0,6" />
+                                <!-- Encoder -->
+                                <TextBlock Text="Encoder" Style="{StaticResource FieldLabel}" Margin="0,20,0,6" />
                                 <ComboBox ItemsSource="{Binding Encoders}" SelectedItem="{Binding SelectedEncoder}" DisplayMemberPath="Label"
                                           HorizontalAlignment="Left" MinWidth="380" AutomationProperties.Name="Encoder" />
-                                <TextBlock Margin="0,6,0,0" Text="{Binding HardwareStatus}">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource StatLabel}">
-                                            <Style.Triggers>
-                                                <Trigger Property="Text" Value=""><Setter Property="Visibility" Value="Collapsed" /></Trigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                                <TextBlock Style="{StaticResource StatLabel}" Margin="0,2,0,0"
+                                <TextBlock Margin="{StaticResource HelperGap}" Text="{Binding HardwareStatus}" Style="{StaticResource HelperWhenNotEmpty}" />
+                                <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0"
                                            Text="All encoders output AV1. If a hardware encoder fails, encoding automatically continues in software." />
 
-                                <CheckBox Content="Keep audio" IsChecked="{Binding KeepAudio}" Margin="0,16,0,0" />
+                                <!-- Audio -->
+                                <TextBlock Text="Audio" Style="{StaticResource FieldLabel}" Margin="0,20,0,6" />
+                                <CheckBox Content="Keep audio" IsChecked="{Binding KeepAudio}" />
                                 <TextBlock Style="{StaticResource StatLabel}" Margin="28,2,0,0"
                                            Text="AAC audio is copied unchanged; other formats are converted to high-quality AAC." />
                             </StackPanel>
@@ -493,26 +521,31 @@
                 <!-- Output -->
                 <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEdit}">
                     <StackPanel>
-                        <TextBlock Text="Save to" Style="{StaticResource CardTitle}" />
-                        <TextBlock Text="Folder" Style="{StaticResource StatLabel}" Margin="0,0,0,4" />
+                        <DockPanel Margin="0,0,0,16">
+                            <TextBlock DockPanel.Dock="Left" Style="{StaticResource SectionIcon}" Text="&#xE8B7;" />
+                            <TextBlock Style="{StaticResource SectionTitle}" Text="Save to" />
+                        </DockPanel>
+                        <TextBlock Text="Folder" Style="{StaticResource FieldLabel}" />
                         <DockPanel>
                             <Button DockPanel.Dock="Right" Content="Same as video" Margin="8,0,0,0" Click="OnUseSourceFolder" />
                             <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Click="OnBrowseOutput" />
                             <TextBox Text="{Binding OutputFolder}" AutomationProperties.Name="Output folder" />
                         </DockPanel>
                         <StackPanel Visibility="{Binding IsSingle, Converter={StaticResource Vis}}">
-                            <TextBlock Text="File name" Style="{StaticResource StatLabel}" Margin="0,12,0,4" />
+                            <TextBlock Text="File name" Style="{StaticResource FieldLabel}" Margin="0,16,0,6" />
                             <TextBox Text="{Binding OutputFileName, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Output file name" />
                         </StackPanel>
                         <TextBlock Style="{StaticResource StatLabel}" Margin="0,8,0,0" Visibility="{Binding IsBatch, Converter={StaticResource Vis}}"
                                    Text="Each video is saved as its own name plus _av1.mp4 (.mkv when MP4 can't hold its streams). With no folder set, each one is saved next to its source." />
-                        <TextBlock Style="{StaticResource StatLabel}" Margin="0,6,0,0" Text="{Binding ContainerNote}"
+                        <TextBlock Style="{StaticResource StatLabel}" Margin="{StaticResource HelperGap}" Text="{Binding ContainerNote}"
                                    Visibility="{Binding HasContainerNote, Converter={StaticResource Vis}}" />
-                        <StackPanel Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}">
-                            <CheckBox Content="Delete the original after the new file passes a check" IsChecked="{Binding DeleteOriginals}" Margin="0,14,0,0" />
-                            <TextBlock Style="{StaticResource StatLabel}" Margin="28,2,0,0" TextWrapping="Wrap"
-                                       Text="The new file must be at least 10% smaller, the same length, and play from start to end without an error. The original then goes to the Recycle Bin (network drives have none, so it is deleted there). If any check fails, the original is kept. Off each time the app starts." />
-                        </StackPanel>
+                        <Border Style="{StaticResource Inset}" Margin="0,16,0,0" Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}">
+                            <StackPanel>
+                                <CheckBox Content="Delete the original after the new file passes a check" IsChecked="{Binding DeleteOriginals}" />
+                                <TextBlock Style="{StaticResource StatLabel}" Margin="28,4,0,0"
+                                           Text="Only when the new file is at least 10% smaller, the same length, and plays from start to end without an error. Originals go to the Recycle Bin (network drives have none, so they're deleted). Off each time the app starts." />
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </Border>
 
@@ -522,16 +555,53 @@
         <!-- Action bar -->
         <Border Grid.Row="1" BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
                 Background="{DynamicResource LayerFillColorDefaultBrush}" Padding="24,14">
-            <DockPanel>
+            <DockPanel MaxWidth="{StaticResource ContentMaxWidth}">
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
                     <Button Content="Cancel" Click="OnCancel" MinWidth="96" Margin="0,0,8,0"
                             Visibility="{Binding ShowProgress, Converter={StaticResource Vis}}" />
                     <Button Content="{Binding PauseLabel}" Click="OnPause" MinWidth="96" Margin="0,0,8,0"
                             Visibility="{Binding ShowProgress, Converter={StaticResource Vis}}" />
-                    <Button Content="{Binding StartLabel}" Click="OnStart" MinWidth="120" IsEnabled="{Binding CanStart}"
-                            Style="{DynamicResource AccentButtonStyle}" />
+                    <Button Content="{Binding StartLabel}" Click="OnStart" MinWidth="132" MinHeight="36" IsEnabled="{Binding CanStart}"
+                            Style="{DynamicResource AccentButtonStyle}" FontWeight="SemiBold" />
                 </StackPanel>
-                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Style="{StaticResource Secondary}" TextTrimming="CharacterEllipsis" />
+                <!-- State icon: each state has its own glyph, so it doesn't rely on colour. -->
+                <TextBlock DockPanel.Dock="Left" Margin="0,0,10,0">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource Icon}">
+                            <Setter Property="Text" Value="&#xE946;" />
+                            <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding State}" Value="Ready">
+                                    <Setter Property="Text" Value="&#xE73E;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="Probing">
+                                    <Setter Property="Text" Value="&#xE895;" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="Encoding">
+                                    <Setter Property="Text" Value="&#xE895;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="Paused">
+                                    <Setter Property="Text" Value="&#xE769;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="Completed">
+                                    <Setter Property="Text" Value="&#xE930;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="Failed">
+                                    <Setter Property="Text" Value="&#xEA39;" />
+                                    <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding State}" Value="Cancelled">
+                                    <Setter Property="Text" Value="&#xE711;" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding StatusText}" VerticalAlignment="Center" Style="{StaticResource Secondary}" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis" />
             </DockPanel>
         </Border>
     </Grid>
