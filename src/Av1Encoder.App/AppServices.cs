@@ -27,7 +27,7 @@ public sealed class AppSettings
     public DiscordStrategy DiscordStrategy { get; set; } = DiscordStrategy.Balanced;
     public bool SkipQualityAnalysis { get; set; }
 
-    static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
+    internal static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
     static string FilePath => Path.Combine(AppLog.DataDir, "settings.json");
 
     public QualitySettings QualityFor(QualityPreset preset) =>
@@ -44,6 +44,25 @@ public sealed class AppSettings
     {
         try { Directory.CreateDirectory(AppLog.DataDir); File.WriteAllText(FilePath, JsonSerializer.Serialize(this, Json)); }
         catch (Exception ex) { AppLog.Write("Settings could not be saved: " + ex.Message); }
+    }
+}
+
+/// <summary>What finished encodes taught about the estimates on this PC (see <see cref="EstimateHistory"/>).</summary>
+public static class EstimateHistoryFile
+{
+    static string FilePath => Path.Combine(AppLog.DataDir, "estimate-history.json");
+
+    public static EstimateHistory Load()
+    {
+        try { if (File.Exists(FilePath)) return JsonSerializer.Deserialize<EstimateHistory>(File.ReadAllText(FilePath), AppSettings.Json) ?? new(); }
+        catch (Exception ex) { AppLog.Write("Estimate history could not be read; starting fresh. " + ex.Message); }
+        return new();
+    }
+
+    public static void Save(EstimateHistory history)
+    {
+        try { Directory.CreateDirectory(AppLog.DataDir); File.WriteAllText(FilePath, JsonSerializer.Serialize(history, AppSettings.Json)); }
+        catch (Exception ex) { AppLog.Write("Estimate history could not be saved: " + ex.Message); }
     }
 }
 

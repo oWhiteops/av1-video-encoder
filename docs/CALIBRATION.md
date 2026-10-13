@@ -81,6 +81,13 @@ the three presets (30 encodes, 16 min).
 
 Unlike SVT-AV1, full GPU encodes never ran faster than the samples, so no time scale is applied.
 
+## Learning on the user's PC
+
+`EstimateHistory` records each finished single-video Compress encode as actual / midpoint of the uncorrected estimate,
+per encoder (`estimate-history.json` in the app data folder). From 3 encodes on, size and time estimates are scaled by
+the median of the last 30, clamped to 0.5-2x. Skipped: encodes under 10 s, GPU-to-software fallbacks (a different encoder
+than estimated), Discord encodes (several attempts) and batches (no estimate), and ratios outside 0.2-5x.
+
 ## Raw calibration results (before the changes above)
 
 ## Calibration (60 s excerpt, preset 8, video only)

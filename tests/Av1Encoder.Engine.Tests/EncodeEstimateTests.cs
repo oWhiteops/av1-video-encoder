@@ -103,3 +103,49 @@ public class EncodeEstimateTests
         Assert.Equal(96_000 / 8.0 * 60 * (EncodeEstimator.SizeLow + EncodeEstimator.SizeHigh) / 2, Mid(reencoded) - Mid(none), tolerance: 10);
     }
 }
+
+public class EstimateHistoryTests
+{
+    static readonly EncodeEstimate Raw = new(80, 120, TimeSpan.FromSeconds(80), TimeSpan.FromSeconds(120));
+    static readonly TimeSpan Minute = TimeSpan.FromMinutes(1);
+
+    [Fact]
+    public void LearnsTheMedianRatioPerEncoderAfterEnoughEncodes()
+    {
+        var h = new EstimateHistory();
+        h.Add(VideoEncoder.Amf, Raw, 100, TimeSpan.FromSeconds(150), Minute);
+        h.Add(VideoEncoder.Amf, Raw, 100, TimeSpan.FromSeconds(150), Minute);
+        Assert.Equal((1.0, 1.0, 2), h.Correction(VideoEncoder.Amf));        // too few encodes yet
+        h.Add(VideoEncoder.Amf, Raw, 110, TimeSpan.FromSeconds(400), Minute); // one slow outlier
+        var (size, time, count) = h.Correction(VideoEncoder.Amf);
+        Assert.Equal(3, count);
+        Assert.Equal(1.0, size, 3);
+        Assert.Equal(1.5, time, 3);                                         // median ignores the outlier
+        Assert.Equal(1.0, h.Correction(VideoEncoder.SvtAv1).Time);          // other encoders untouched
+        var corrected = h.Apply(Raw, VideoEncoder.Amf);
+        Assert.Equal(TimeSpan.FromSeconds(120), corrected.MinTime);
+        Assert.Equal(80, corrected.MinBytes);
+    }
+
+    [Fact]
+    public void SurvivesAJsonRoundTrip()
+    {
+        var h = new EstimateHistory();
+        for (int i = 0; i < 3; i++) h.Add(VideoEncoder.Amf, Raw, 100, TimeSpan.FromSeconds(150), Minute);
+        var options = new System.Text.Json.JsonSerializerOptions { Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() } };
+        var back = System.Text.Json.JsonSerializer.Deserialize<EstimateHistory>(System.Text.Json.JsonSerializer.Serialize(h, options), options)!;
+        Assert.Equal(h.Correction(VideoEncoder.Amf), back.Correction(VideoEncoder.Amf));
+    }
+
+    [Fact]
+    public void IgnoresShortEncodesAbsurdRatiosAndKeepsTheLatest()
+    {
+        var h = new EstimateHistory();
+        h.Add(VideoEncoder.SvtAv1, Raw, 100, TimeSpan.FromSeconds(100), TimeSpan.FromSeconds(5));
+        h.Add(VideoEncoder.SvtAv1, Raw, 100_000, TimeSpan.FromSeconds(100), Minute);
+        Assert.Empty(h.Outcomes);
+        for (int i = 0; i < EstimateHistory.Keep + 5; i++) h.Add(VideoEncoder.SvtAv1, Raw, 100, TimeSpan.FromSeconds(400), Minute);
+        Assert.Equal(EstimateHistory.Keep, h.Outcomes.Count);
+        Assert.Equal(EstimateHistory.MaxCorrection, h.Correction(VideoEncoder.SvtAv1).Time); // 4x slower, capped
+    }
+}

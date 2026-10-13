@@ -15,6 +15,7 @@ public sealed record InfoItem(string Label, string Value);
 public sealed partial class MainViewModel : INotifyPropertyChanged
 {
     readonly AppSettings settings = AppSettings.Load();
+    readonly EstimateHistory history = EstimateHistoryFile.Load();
     FfmpegTools? tools;
     MediaInfo? media;
     EncodeJob? job;
@@ -277,17 +278,29 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     /// <summary>
     /// Size/time estimate for a request: GPU encodes from GPU samples, software from the quick check. When the GPU
-    /// can't encode the video, the estimate is for the software encode it would fall back to.
+    /// can't encode the video, the estimate is for the software encode it would fall back to. Corrected by what
+    /// earlier encodes on this PC measured, unless <paramref name="corrected"/> is false (the baseline they are measured against).
     /// </summary>
-    EncodeEstimate? EstimateFor(EncodeRequest request)
+    EncodeEstimate? EstimateFor(EncodeRequest request, bool corrected = true)
     {
+        EncodeEstimate? Learned(EncodeEstimate? e) => e != null && corrected ? history.Apply(e, request.Encoder) : e;
         if (request.Encoder != VideoEncoder.SvtAv1)
         {
-            if (hwSample?.Matches(request) == true) return EncodeEstimator.EstimateHardware(media!, request, hwSample);
+            if (hwSample?.Matches(request) == true) return Learned(EncodeEstimator.EstimateHardware(media!, request, hwSample));
             if (hwError == null) return null;
             request = request with { Encoder = VideoEncoder.SvtAv1 };
         }
-        return complexity == null ? null : EncodeEstimator.Estimate(media!, request, complexity);
+        return Learned(complexity == null ? null : EncodeEstimator.Estimate(media!, request, complexity));
+    }
+
+    /// <summary>Records how a finished encode compared with its uncorrected estimate, so later estimates learn from it.</summary>
+    void Learn(EncodeEstimate? uncorrected, EncodeResult r)
+    {
+        if (uncorrected == null || r.FellBackToSoftware) return; // a fallback ran a different encoder than was estimated
+        history.Add(r.EncoderUsed, uncorrected, r.OutputBytes, r.EncodeTime, r.Output.Duration);
+        EstimateHistoryFile.Save(history);
+        var (size, time, count) = history.Correction(r.EncoderUsed);
+        AppLog.Write($"Estimate learning ({r.EncoderUsed}): now size x{size:0.00}, time x{time:0.00}, from {count} encode(s).");
     }
 
     /// <summary>"Estimated output ≈ 48–62 MB · encoding time ≈ 3–5 min on this PC", from the quick check or GPU samples.</summary>
@@ -304,6 +317,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                     : SkipQualityAnalysis ? "Size and time estimates need the quality check, which is turned off." : "";
             string where = gpu && hwError == null ? "on this PC's GPU" : "on this PC";
             string time = e.MinTime is { } lo && e.MaxTime is { } hi ? $"encoding time ≈ {Format.TimeRange(lo, hi)} {where}" : "no time estimate";
+            int learned = history.Correction(gpu && hwError != null ? VideoEncoder.SvtAv1 : request.Encoder).Count;
+            if (learned >= EstimateHistory.MinOutcomes) time += $" (adjusted from your last {learned} encodes)";
             string prefix = gpu && hwError != null
                 ? "The GPU encoder can't encode this video, so it would fall back to slower software encoding. "
                 : "";
@@ -450,12 +465,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         runRequest = request;
         runEstimate = EstimateFor(request);
+        var uncorrected = EstimateFor(request, corrected: false);
         AppLog.Write($"Encoding {request.InputPath} -> {request.OutputPath} (CRF {request.Quality.Crf}, speed {request.Quality.Speed}, {request.Encoder}, audio {(request.IncludeAudio ? "kept" : "removed")}).");
         return RunEncodeAsync((progress, token) =>
         {
             job = new EncodeJob(tools!, request, media!, AppLog.Write);
             return job.RunAsync(progress, token);
-        }, ShowResultFor);
+        }, r => { ShowResultFor(r); Learn(uncorrected, r); });
     }
 
     /// <summary>Shared run loop for both modes: state, progress, cancellation and error reporting.</summary>

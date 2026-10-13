@@ -92,3 +92,48 @@ public static class EncodeEstimator
         return new(min, max, TimeSpan.FromSeconds(seconds * TimeLow), TimeSpan.FromSeconds(seconds * TimeHigh));
     }
 }
+
+/// <summary>How far one finished encode landed from its uncorrected estimate (actual / range midpoint).</summary>
+public sealed record EstimateOutcome(VideoEncoder Encoder, double SizeRatio, double? TimeRatio, DateTime When);
+
+/// <summary>
+/// Learns from finished encodes on this PC: estimates are scaled by the median ratio of the last encodes with the same
+/// encoder. Ratios are always taken against the uncorrected estimate, so corrections don't compound.
+/// </summary>
+public sealed class EstimateHistory
+{
+    public const int Keep = 30, MinOutcomes = 3;
+    // One odd encode (a game running, a network hiccup) is outvoted by the median; this bounds what a run of them can do.
+    public const double MinCorrection = 0.5, MaxCorrection = 2.0;
+
+    public List<EstimateOutcome> Outcomes { get; set; } = [];
+
+    /// <summary>Records a finished encode. Ignores encodes too short to time reliably and absurd ratios.</summary>
+    public void Add(VideoEncoder encoder, EncodeEstimate uncorrected, long actualBytes, TimeSpan actualTime, TimeSpan outputDuration)
+    {
+        if (outputDuration < TimeSpan.FromSeconds(10)) return;
+        double size = actualBytes / Mid(uncorrected.MinBytes, uncorrected.MaxBytes);
+        double? time = uncorrected is { MinTime: { } lo, MaxTime: { } hi } ? actualTime.TotalSeconds / Mid(lo.TotalSeconds, hi.TotalSeconds) : null;
+        if (size is < 0.2 or > 5 || time is < 0.2 or > 5) return;
+        Outcomes.Add(new(encoder, size, time, DateTime.Now));
+        foreach (var old in Outcomes.Where(o => o.Encoder == encoder).SkipLast(Keep).ToList()) Outcomes.Remove(old);
+    }
+
+    /// <summary>Size and time factors for an encoder, and how many encodes they come from (1.0 below <see cref="MinOutcomes"/>).</summary>
+    public (double Size, double Time, int Count) Correction(VideoEncoder encoder)
+    {
+        var mine = Outcomes.Where(o => o.Encoder == encoder).ToList();
+        var times = mine.Where(o => o.TimeRatio != null).Select(o => o.TimeRatio!.Value).ToList();
+        double Factor(List<double> r) => r.Count < MinOutcomes ? 1 : Math.Clamp(Median(r), MinCorrection, MaxCorrection);
+        return (Factor(mine.Select(o => o.SizeRatio).ToList()), Factor(times), mine.Count);
+    }
+
+    public EncodeEstimate Apply(EncodeEstimate e, VideoEncoder encoder)
+    {
+        var (size, time, _) = Correction(encoder);
+        return new((long)(e.MinBytes * size), (long)(e.MaxBytes * size), e.MinTime * time, e.MaxTime * time);
+    }
+
+    static double Mid(double a, double b) => Math.Max((a + b) / 2, 1e-9);
+    static double Median(List<double> v) { v.Sort(); return v.Count % 2 == 1 ? v[v.Count / 2] : (v[v.Count / 2 - 1] + v[v.Count / 2]) / 2; }
+}

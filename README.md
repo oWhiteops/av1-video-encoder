@@ -22,6 +22,9 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
    Once a video is loaded, a few-second quality check estimates the output size and encoding time, for example
    *Estimated output ≈ 14–21 MB · encoding time ≈ 1–2 min on this PC*. It updates as you change settings. On test
    videos about 9 in 10 results landed inside the shown ranges; other programs running make encoding slower.
+   The estimates learn from your encodes: after 3 finished encodes with an encoder, they are adjusted by how far
+   off they were on this PC (the median of the last 30, at most 2x either way). The data is kept in
+   `%LOCALAPPDATA%\AV1 Video Encoder\estimate-history.json`; delete it to start over.
 4. Check the output folder and file name (default: next to the source, named `<name>_av1.mp4`).
 5. Press **Start**. You can **Pause**, **Resume** or **Cancel** at any time; after a failure or cancel the
    button becomes **Retry**.
