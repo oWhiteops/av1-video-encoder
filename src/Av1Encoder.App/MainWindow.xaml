@@ -180,6 +180,7 @@
                                                 <StackPanel Margin="0,0,12,0">
                                                     <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                                                     <TextBlock Text="{Binding Details}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
+                                                    <TextBlock Text="{Binding EstimateText}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
                                                     <TextBlock Text="{Binding Status}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
                                                 </StackPanel>
                                             </DockPanel>
@@ -187,8 +188,21 @@
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
-                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,8,0,0"
-                                       Text="Videos are encoded one after another with the quality, encoder and audio settings below. Batches get no size or time estimate." />
+                            <TextBlock Text="{Binding BatchEstimate}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            <TextBlock Text="{Binding BatchSaving}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,4,0,0" />
+                            <DockPanel Margin="0,4,0,0" Visibility="{Binding HasLowSaving, Converter={StaticResource Vis}}">
+                                <Button DockPanel.Dock="Right" Content="Remove them" Click="OnRemoveLowSaving" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0" />
+                                <TextBlock Text="{Binding LowSavingNote}" Style="{StaticResource Secondary}" TextWrapping="Wrap" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <DockPanel Margin="0,6,0,0" Visibility="{Binding IsBatchChecking, Converter={StaticResource Vis}}">
+                                <Button DockPanel.Dock="Right" Content="Cancel" Click="OnCancelBatchCheck" Margin="8,0,0,0" />
+                                <StackPanel>
+                                    <TextBlock Text="{Binding BatchCheckStatus}" Style="{StaticResource Secondary}" TextTrimming="CharacterEllipsis" />
+                                    <ProgressBar Value="{Binding BatchCheckPercent, Mode=OneWay}" Maximum="100" Height="4" Margin="0,6,0,0" />
+                                </StackPanel>
+                            </DockPanel>
+                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,8,0,0" TextWrapping="Wrap"
+                                       Text="Videos are encoded one after another with the quality, encoder and audio settings below. Each video gets a quick check (a few seconds) for its estimate; totals for videos not checked yet are extrapolated." />
                         </StackPanel>
 
                         <StackPanel Visibility="{Binding ShowSingle, Converter={StaticResource Vis}}">
@@ -249,6 +263,10 @@
                             <TextBlock DockPanel.Dock="Right" Text="{Binding PercentText}" FontSize="16" FontWeight="SemiBold" />
                             <TextBlock Text="{Binding StatusText}" FontSize="16" FontWeight="SemiBold" />
                         </DockPanel>
+                        <StackPanel Margin="0,0,0,12" Visibility="{Binding ShowBatchProgress, Converter={StaticResource Vis}}">
+                            <TextBlock Text="{Binding BatchProgressText}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,6" />
+                            <ProgressBar Value="{Binding BatchPercent, Mode=OneWay}" Maximum="100" Height="6" />
+                        </StackPanel>
                         <ProgressBar Value="{Binding Percent, Mode=OneWay}" Maximum="100" Height="6" />
                         <UniformGrid Columns="4" Margin="0,14,0,0">
                             <StackPanel><TextBlock Text="Elapsed" Style="{StaticResource StatLabel}" /><TextBlock Text="{Binding ElapsedText}" Style="{StaticResource StatValue}" /></StackPanel>

@@ -55,7 +55,11 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
                 PropertyChanged?.Invoke(this, new(check));
         // Encoder or quality changes need a new GPU measurement (a no-op for software or when it still matches).
         if (name is nameof(SelectedEncoder) or nameof(UseCustom) or nameof(IsHighQuality) or nameof(CustomCrf) or nameof(CustomSpeed) or nameof(IsDiscordMode))
+        {
             SampleHardware();
+            CheckBatch();
+        }
+        if (name is nameof(KeepAudio)) RefreshBatchEstimates();
     }
 
     // ---------- State ----------
@@ -300,16 +304,20 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     /// can't encode the video, the estimate is for the software encode it would fall back to. Corrected by what
     /// earlier encodes on this PC measured, unless <paramref name="corrected"/> is false (the baseline they are measured against).
     /// </summary>
-    EncodeEstimate? EstimateFor(EncodeRequest request, bool corrected = true)
+    EncodeEstimate? EstimateFor(EncodeRequest request, bool corrected = true) =>
+        EstimateFor(media!, request, complexity, SampleFor(request), HwError(request) != null, corrected);
+
+    /// <summary>The same for any video, given its quality check, GPU sample and whether the GPU failed on it.</summary>
+    EncodeEstimate? EstimateFor(MediaInfo m, EncodeRequest request, ComplexityEstimate? check, HardwareSample? sample, bool gpuFailed, bool corrected = true)
     {
         EncodeEstimate? Learned(EncodeEstimate? e) => e != null && corrected ? history.Apply(e, request.Encoder) : e;
         if (request.Encoder != VideoEncoder.SvtAv1)
         {
-            if (SampleFor(request) is { } sample) return Learned(EncodeEstimator.EstimateHardware(media!, request, sample));
-            if (HwError(request) == null) return null;
+            if (sample != null) return Learned(EncodeEstimator.EstimateHardware(m, request, sample));
+            if (!gpuFailed) return null;
             request = request with { Encoder = VideoEncoder.SvtAv1 };
         }
-        return Learned(complexity == null ? null : EncodeEstimator.Estimate(media!, request, complexity));
+        return Learned(check == null ? null : EncodeEstimator.Estimate(m, request, check));
     }
 
     /// <summary>
@@ -469,7 +477,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     public double Percent { get => percent; private set { Set(ref percent, value); Raise(nameof(TaskbarProgress)); } }
 
     /// <summary>Taskbar button progress (0-1), across the whole batch when one is running.</summary>
-    public double TaskbarProgress => batchCount > 0 ? (batchIndex + Percent / 100) / batchCount : Percent / 100;
+    public double TaskbarProgress => batchCount > 0 ? BatchPercent / 100 : Percent / 100;
     public System.Windows.Shell.TaskbarItemProgressState TaskbarState => State switch
     {
         JobState.Encoding => System.Windows.Shell.TaskbarItemProgressState.Normal,

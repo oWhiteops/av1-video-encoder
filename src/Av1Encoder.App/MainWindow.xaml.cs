@@ -164,6 +164,8 @@ public partial class MainWindow : Window
     }
 
     void OnCancelAnalysis(object sender, RoutedEventArgs e) => vm.CancelAnalysis();
+    void OnCancelBatchCheck(object sender, RoutedEventArgs e) => vm.CancelBatchCheck();
+    void OnRemoveLowSaving(object sender, RoutedEventArgs e) => vm.RemoveLowSaving();
     void OnSkipAnalysis(object sender, RoutedEventArgs e) => vm.SkipAnalysisNow();
     void OnResetOverrides(object sender, RoutedEventArgs e) => vm.ResetOverrides();
 

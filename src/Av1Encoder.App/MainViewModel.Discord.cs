@@ -250,7 +250,7 @@ public sealed partial class MainViewModel
             settings.SkipQualityAnalysis = value;
             settings.Save();
             Raise(nameof(SkipQualityAnalysis));
-            if (value) CancelAnalysis(); else { StartAnalysis(); SampleHardware(); }
+            if (value) { CancelAnalysis(); StopBatchCheck(); RefreshBatchEstimates(); } else { StartAnalysis(); SampleHardware(); CheckBatch(); }
         }
     }
 

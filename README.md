@@ -19,6 +19,11 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
    (subfolders included), drop it or use **Choose a folder…** / **Add folder…**. They are encoded one after
    another with the same settings, each saved as `<name>_av1.mp4`. A video that fails is reported and the rest
    continue; Cancel stops the batch and keeps the videos already finished.
+   Each video in a batch gets a quick check, then shows its own estimated size, saving and encoding time. Under the
+   list are the totals: the size after compression, the encoding time, and the space saved once the originals are
+   deleted. While videos are still being checked, the totals are extrapolated from the ones done so far. Videos that
+   would shrink by less than 10% are counted, and **Remove them** takes them off the list. While a batch runs, a
+   second progress bar shows the whole batch: percent done, which video, time elapsed, time left and space saved so far.
 3. Choose a preset. **Balanced** suits almost everything.
    Once a video is loaded, a few-second quality check estimates the output size and encoding time, for example
    *Estimated output ≈ 14–21 MB · encoding time ≈ 1–2 min on this PC*, and each preset card shows its own size and
@@ -145,7 +150,7 @@ scripts\benchmark.ps1 -InputFile clip.mp4    # size / speed / VMAF grid used to 
   listed in the result.
 - Progress, remaining time and output size are estimates during encoding; the final numbers are exact.
 - Pause suspends the FFmpeg process; it is not designed to survive sleep/hibernate or app restarts.
-- Batches (Compress mode only) run one video at a time with the same settings, and get no size or time estimate.
+- Batches (Compress mode only) run one video at a time with the same settings.
   Video to Discord works on a single video.
 - Hardware AV1 paths: AMD AMF was tested on a current AMD Radeon GPU. NVIDIA NVENC and Intel QSV argument sets follow
   vendor documentation but were not tested on real hardware; they fall back to software on failure.
