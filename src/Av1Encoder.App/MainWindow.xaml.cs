@@ -20,7 +20,7 @@ public partial class MainWindow : Window
     async void OnLoaded(object sender, RoutedEventArgs e)
     {
         var args = Environment.GetCommandLineArgs();
-        if (args.Length > 1 && File.Exists(args[1])) await vm.LoadAsync(args[1]);
+        if (args.Skip(1).Where(File.Exists).ToList() is { Count: > 0 } files) await vm.AddAsync(files);
         await vm.DetectHardwareAsync();
     }
 
@@ -33,7 +33,7 @@ public partial class MainWindow : Window
     async void OnDrop(object sender, DragEventArgs e)
     {
         if (vm.CanEdit && e.Data.GetData(DataFormats.FileDrop) is string[] { Length: > 0 } files)
-            await vm.LoadAsync(files[0]);
+            await vm.AddAsync(files);
     }
 
     async void OnBrowseInput(object sender, RoutedEventArgs e)
@@ -41,10 +41,18 @@ public partial class MainWindow : Window
         if (!vm.CanEdit) return;
         var dlg = new OpenFileDialog
         {
-            Title = "Choose a video",
+            Title = vm.IsCompressMode ? "Choose videos" : "Choose a video",
+            Multiselect = vm.IsCompressMode,
             Filter = "Videos|*.mp4;*.m4v;*.mov;*.mkv;*.avi;*.webm;*.wmv;*.flv;*.ts;*.mts;*.m2ts;*.mpg;*.mpeg;*.3gp;*.ogv|All files|*.*",
         };
-        if (dlg.ShowDialog(this) == true) await vm.LoadAsync(dlg.FileName);
+        if (dlg.ShowDialog(this) == true) await vm.AddAsync(dlg.FileNames);
+    }
+
+    void OnRemoveVideo(object sender, RoutedEventArgs e) => vm.RemoveVideo();
+    void OnClearQueue(object sender, RoutedEventArgs e) => vm.ClearQueue();
+    void OnRemoveFromQueue(object sender, RoutedEventArgs e)
+    {
+        if (((FrameworkElement)sender).DataContext is QueueItem item) vm.RemoveFromQueue(item);
     }
 
     void OnBrowseOutput(object sender, RoutedEventArgs e)
@@ -61,6 +69,7 @@ public partial class MainWindow : Window
 
     async void Start(bool ignoreFloor)
     {
+        if (vm.IsBatch) { await StartBatch(); return; }
         var output = vm.ResolveOutputPath();
         if (output == null) return;
 
@@ -91,6 +100,28 @@ public partial class MainWindow : Window
             ignoreFloor = true;
         }
         await vm.StartDiscordAsync(output, overwrite, ignoreFloor);
+    }
+
+    async Task StartBatch()
+    {
+        if (vm.BatchOutputs() is not { } work) return;
+        int existing = work.Count(w => File.Exists(w.Request.OutputPath));
+        bool overwrite = false;
+        if (existing > 0)
+        {
+            var answer = MessageBox.Show(this, $"{existing} of the {work.Count} output files already exist.\n\nReplace them? Choose No to skip those videos.",
+                "Replace files?", MessageBoxButton.YesNoCancel, MessageBoxImage.Warning, MessageBoxResult.Cancel);
+            if (answer == MessageBoxResult.Cancel) return;
+            overwrite = answer == MessageBoxResult.Yes;
+        }
+        foreach (var drive in work.GroupBy(w => Path.GetPathRoot(w.Request.OutputPath)))
+        {
+            long needed = drive.Sum(w => Engine.EncodeJob.EstimateRequiredBytes(w.Request, w.Item.Media));
+            if (Engine.EncodeJob.AvailableBytes(drive.First().Request.OutputPath) is long free && free < needed &&
+                MessageBox.Show(this, $"{drive.Key} has {Format.Size(free)} free. These encodes may need up to about {Format.Size(needed)} (an estimate).\n\nStart anyway?",
+                    "Low disk space", MessageBoxButton.YesNo, MessageBoxImage.Warning, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+        }
+        await vm.StartBatchAsync(work, overwrite);
     }
 
     void OnCancelAnalysis(object sender, RoutedEventArgs e) => vm.CancelAnalysis();

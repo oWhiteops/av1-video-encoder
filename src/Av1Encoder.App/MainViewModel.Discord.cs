@@ -33,7 +33,7 @@ public sealed partial class MainViewModel
             settings.Save();
             if (media != null && OutputFileName == DefaultOutputName(media, !value)) OutputFileName = DefaultOutputName(media, value);
             UpdateContainerNote();
-            Raise(nameof(IsDiscordMode), nameof(IsCompressMode));
+            Raise(nameof(IsDiscordMode), nameof(IsCompressMode), nameof(ShowDiscordBatchNote));
             if (complexity == null && !IsAnalyzing) StartAnalysis();
             Replan();
         }

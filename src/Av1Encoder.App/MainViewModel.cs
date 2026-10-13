@@ -24,6 +24,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         Encoders.Add(new(VideoEncoder.SvtAv1, "Software, SVT-AV1 (best compression)"));
         selectedEncoder = Encoders[0];
+        Queue.CollectionChanged += (_, _) => OnQueueChanged();
         try { tools = FfmpegTools.Locate(); }
         catch (EncodeException ex) { ErrorMessage = ex.Message; AppLog.Write(ex.Message); }
     }
@@ -60,16 +61,16 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         private set
         {
             Set(ref state, value);
-            Raise(nameof(HasMedia), nameof(IsBusy), nameof(CanEdit), nameof(CanStart), nameof(ShowProgress), nameof(ShowResult),
+            Raise(nameof(HasMedia), nameof(ShowSingle), nameof(IsBusy), nameof(CanEdit), nameof(CanStart), nameof(ShowProgress), nameof(ShowResult),
                 nameof(StartLabel), nameof(PauseLabel), nameof(StatusText), nameof(IsPaused));
         }
     }
 
-    public bool HasMedia => media != null && State != JobState.Probing;
+    public bool HasMedia => (media != null || IsBatch) && State != JobState.Probing;
     public bool IsBusy => State is JobState.Encoding or JobState.Paused or JobState.Probing;
     public bool IsPaused => State == JobState.Paused;
     public bool CanEdit => !IsBusy;
-    public bool CanStart => tools != null && media != null && !IsBusy && (!IsDiscordMode || plan != null);
+    public bool CanStart => tools != null && !IsBusy && (IsBatch ? !IsDiscordMode : media != null && (!IsDiscordMode || plan != null));
     public bool ShowProgress => State is JobState.Encoding or JobState.Paused;
     public bool ShowResult => State == JobState.Completed;
     public string StartLabel => State is JobState.Failed or JobState.Cancelled ? "Retry" : State == JobState.Completed ? "Encode again" : "Start";
@@ -79,6 +80,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     {
         JobState.Empty => "Add a video to get started.",
         JobState.Probing => "Reading video…",
+        JobState.Cancelled when IsBatch => "Cancelled. Videos that had finished were kept.",
         JobState.Ready => "Ready to encode.",
         JobState.Encoding => Stage,
         JobState.Paused => "Paused.",
@@ -109,17 +111,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             var info = await Task.Run(() => MediaProbe.ProbeAsync(tools, path));
             if (info.Video == null) throw new EncodeException("This file does not contain a video stream.");
-            media = info;
-            FileName = Path.GetFileName(path);
-            FillSourceInfo(info);
-            OutputFileName = DefaultOutputName(info, IsDiscordMode);
-            if (settings.OutputFolder == null || !Directory.Exists(settings.OutputFolder)) outputFolder = Path.GetDirectoryName(path)!;
-            Raise(nameof(OutputFolder));
-            UpdateContainerNote();
-            State = JobState.Ready;
-            OnDiscordMediaLoaded();
-            ResetHardwareSample();
-            AppLog.Write($"Loaded: {info.FormatName}, {info.Video.Width}x{info.Video.Height}, {info.Duration}, {info.Audio.Count} audio, {info.Subtitles.Count} subtitle stream(s).");
+            Show(info);
         }
         catch (EncodeException ex)
         {
@@ -127,6 +119,22 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             ErrorMessage = ex.Message;
             State = media == null ? JobState.Empty : JobState.Ready;
         }
+    }
+
+    /// <summary>Opens the single-video view for a probed video.</summary>
+    void Show(MediaInfo info)
+    {
+        media = info;
+        FileName = Path.GetFileName(info.Path);
+        FillSourceInfo(info);
+        OutputFileName = DefaultOutputName(info, IsDiscordMode);
+        if (settings.OutputFolder == null || !Directory.Exists(settings.OutputFolder)) outputFolder = Path.GetDirectoryName(info.Path)!;
+        Raise(nameof(OutputFolder));
+        UpdateContainerNote();
+        State = JobState.Ready;
+        OnDiscordMediaLoaded();
+        ResetHardwareSample();
+        AppLog.Write($"Loaded: {info.FormatName}, {info.Video!.Width}x{info.Video.Height}, {info.Duration}, {info.Audio.Count} audio, {info.Subtitles.Count} subtitle stream(s).");
     }
 
     /// <summary>Discord output is always MP4 (what Discord plays); Compress picks MKV only when MP4 can't hold the streams.</summary>
@@ -394,7 +402,13 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             : p.Fps is double fps and > 0 ? $"{fps:0} fps" : "starting…";
         EstimateText = p.EstimatedOutputBytes is long e ? "≈ " + Format.Size(e)
             : runEstimate != null ? $"≈ {Format.SizeRange(runEstimate.MinBytes, runEstimate.MaxBytes)} (estimate)" : "calculating…";
-        Stage = p.Stage;
+        Stage = batchPrefix + p.Stage;
+    }
+
+    void ResetProgress()
+    {
+        Percent = 0; PercentText = "0.0%"; ElapsedText = "0:00"; RemainingText = "calculating…"; SpeedText = "–"; EstimateText = "calculating…";
+        Stage = batchPrefix + "Starting…";
     }
 
     // ---------- Commands ----------
@@ -418,14 +432,14 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         catch (Exception) { ErrorMessage = "The output folder path is not valid."; return null; }
     }
 
-    public EncodeRequest BuildRequest(string outputPath, bool overwrite)
+    public EncodeRequest BuildRequest(string outputPath, bool overwrite, MediaInfo? source = null)
     {
         var quality = UseCustom
             ? new QualitySettings(CustomCrf, CustomSpeed, QualitySettings.HardwareQualityFromCrf(CustomCrf))
             : settings.QualityFor(settings.Preset);
         return new EncodeRequest
         {
-            InputPath = media!.Path, OutputPath = outputPath, Quality = quality, Encoder = SelectedEncoder.Encoder,
+            InputPath = (source ?? media)!.Path, OutputPath = outputPath, Quality = quality, Encoder = SelectedEncoder.Encoder,
             IncludeAudio = KeepAudio, OverwriteExisting = overwrite, SvtParams = settings.SvtParams,
         };
     }
@@ -450,8 +464,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         if (!CanStart) return;
         ErrorMessage = null;
         CanEncodeAnyway = false;
-        Percent = 0; PercentText = "0.0%"; ElapsedText = "0:00"; RemainingText = "calculating…"; SpeedText = "–"; EstimateText = "calculating…";
-        Stage = "Starting…";
+        ResetProgress();
         cts = new CancellationTokenSource();
         State = JobState.Encoding;
         var progress = new Progress<EncodeProgress>(OnProgress);

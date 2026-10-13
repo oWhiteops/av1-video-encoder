@@ -134,15 +134,48 @@
                             <StackPanel HorizontalAlignment="Center">
                                 <TextBlock FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xE8B2;" FontSize="36"
                                            HorizontalAlignment="Center" Foreground="{DynamicResource AccentFillColorDefaultBrush}" />
-                                <TextBlock Text="Drag a video here" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
+                                <TextBlock Text="Drag videos here" FontSize="17" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,10,0,4" />
                                 <TextBlock Style="{StaticResource Secondary}" HorizontalAlignment="Center" TextAlignment="Center"
-                                           Text="or click to browse · MP4, MOV, MKV, AVI, WebM and more" />
+                                           Text="or click to browse · MP4, MOV, MKV, AVI, WebM and more · several at once to compress a batch" />
                             </StackPanel>
                         </Border>
 
-                        <StackPanel Visibility="{Binding HasMedia, Converter={StaticResource Vis}}">
+                        <!-- Batch -->
+                        <StackPanel Visibility="{Binding IsBatch, Converter={StaticResource Vis}}">
+                            <DockPanel Margin="0,0,0,8">
+                                <Button DockPanel.Dock="Right" Content="Clear all" Click="OnClearQueue" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0" />
+                                <Button DockPanel.Dock="Right" Content="Add videos…" Click="OnBrowseInput" IsEnabled="{Binding CanEdit}" />
+                                <TextBlock Text="{Binding BatchSummary}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
+                            </DockPanel>
+                            <ItemsControl ItemsSource="{Binding Queue}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Border BorderThickness="0,1,0,0" BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}" Padding="0,8">
+                                            <DockPanel>
+                                                <Button DockPanel.Dock="Right" Click="OnRemoveFromQueue" VerticalAlignment="Center" Padding="8,4"
+                                                        FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Content="&#xE711;" ToolTip="Remove from the list"
+                                                        AutomationProperties.Name="{Binding Name, StringFormat=Remove {0}}"
+                                                        IsEnabled="{Binding DataContext.CanEdit, RelativeSource={RelativeSource AncestorType=Window}}" />
+                                                <StackPanel Margin="0,0,12,0">
+                                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                                                    <TextBlock Text="{Binding Details}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
+                                                    <TextBlock Text="{Binding Status}" Style="{StaticResource StatLabel}" Margin="0,2,0,0" />
+                                                </StackPanel>
+                                            </DockPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Style="{StaticResource StatLabel}" Margin="0,8,0,0"
+                                       Text="Videos are encoded one after another with the quality, encoder and audio settings below. Batches get no size or time estimate." />
+                        </StackPanel>
+
+                        <StackPanel Visibility="{Binding ShowSingle, Converter={StaticResource Vis}}">
                             <DockPanel Margin="0,0,0,12">
-                                <Button DockPanel.Dock="Right" Content="Choose another…" Click="OnBrowseInput" IsEnabled="{Binding CanEdit}" />
+                                <Button DockPanel.Dock="Right" Content="Remove" Click="OnRemoveVideo" IsEnabled="{Binding CanEdit}" Margin="8,0,0,0"
+                                        ToolTip="Remove this video so you can add a different one" />
+                                <Button DockPanel.Dock="Right" Content="Add more…" Click="OnBrowseInput" IsEnabled="{Binding CanEdit}"
+                                        Visibility="{Binding IsCompressMode, Converter={StaticResource Vis}}" ToolTip="Add more videos to compress as a batch" />
                                 <TextBlock Text="{Binding FileName}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center"
                                            TextTrimming="CharacterEllipsis" Margin="0,0,12,0" />
                             </DockPanel>
@@ -227,6 +260,8 @@
                 <Border Style="{StaticResource Card}" IsEnabled="{Binding CanEdit}" Visibility="{Binding IsDiscordMode, Converter={StaticResource Vis}}">
                     <StackPanel>
                         <TextBlock Text="Discord upload" Style="{StaticResource CardTitle}" />
+                        <TextBlock Style="{StaticResource Secondary}" Margin="0,0,0,12" Visibility="{Binding ShowDiscordBatchNote, Converter={StaticResource Vis}}"
+                                   Text="Video to Discord works on one video at a time. Remove videos from the list until one is left, or switch to Compress to encode them all." />
 
                         <TextBlock Text="Size limit" Style="{StaticResource StatLabel}" Margin="0,0,0,6" />
                         <WrapPanel>
@@ -419,8 +454,12 @@
                             <Button DockPanel.Dock="Right" Content="Browse…" Margin="8,0,0,0" Click="OnBrowseOutput" />
                             <TextBox Text="{Binding OutputFolder}" AutomationProperties.Name="Output folder" />
                         </DockPanel>
-                        <TextBlock Text="File name" Style="{StaticResource StatLabel}" Margin="0,12,0,4" />
-                        <TextBox Text="{Binding OutputFileName, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Output file name" />
+                        <StackPanel Visibility="{Binding IsSingle, Converter={StaticResource Vis}}">
+                            <TextBlock Text="File name" Style="{StaticResource StatLabel}" Margin="0,12,0,4" />
+                            <TextBox Text="{Binding OutputFileName, UpdateSourceTrigger=PropertyChanged}" AutomationProperties.Name="Output file name" />
+                        </StackPanel>
+                        <TextBlock Style="{StaticResource StatLabel}" Margin="0,8,0,0" Visibility="{Binding IsBatch, Converter={StaticResource Vis}}"
+                                   Text="Each video is saved as its own name plus _av1.mp4 (.mkv when MP4 can't hold its streams). With no folder set, each one is saved next to its source." />
                         <TextBlock Style="{StaticResource StatLabel}" Margin="0,6,0,0" Text="{Binding ContainerNote}"
                                    Visibility="{Binding HasContainerNote, Converter={StaticResource Vis}}" />
                     </StackPanel>

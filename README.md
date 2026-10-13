@@ -14,7 +14,10 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
 
 1. Run `AV1VideoEncoder.exe`.
 2. Drag a video onto the window (or click the drop area to browse). MP4, MOV, MKV, AVI, WebM and most other
-   formats work.
+   formats work. **Remove** clears it so you can pick a different one.
+   To compress several videos, drop or select them together, or use **Add more…**. They are encoded one after
+   another with the same settings, each saved as `<name>_av1.mp4`. A video that fails is reported and the rest
+   continue; Cancel stops the batch and keeps the videos already finished.
 3. Choose a preset. **Balanced** suits almost everything.
    Once a video is loaded, a few-second quality check estimates the output size and encoding time, for example
    *Estimated output ≈ 14–21 MB · encoding time ≈ 1–2 min on this PC*. It updates as you change settings. On test
@@ -129,7 +132,8 @@ scripts\benchmark.ps1 -InputFile clip.mp4    # size / speed / VMAF grid used to 
   listed in the result.
 - Progress, remaining time and output size are estimates during encoding; the final numbers are exact.
 - Pause suspends the FFmpeg process; it is not designed to survive sleep/hibernate or app restarts.
-- One file at a time. The engine is built so batch processing is a loop over jobs, but there is no batch UI.
+- Batches (Compress mode only) run one video at a time with the same settings, and get no size or time estimate.
+  Video to Discord works on a single video.
 - Hardware AV1 paths: AMD AMF was tested on a current AMD Radeon GPU. NVIDIA NVENC and Intel QSV argument sets follow
   vendor documentation but were not tested on real hardware; they fall back to software on failure.
 - The bundled FFmpeg is about 160 MB, which dominates the download size.
