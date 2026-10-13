@@ -47,6 +47,13 @@ public sealed partial class MainViewModel
     public async Task AddAsync(IReadOnlyList<string> paths)
     {
         if (IsBusy || paths.Count == 0) return;
+        if (paths.Any(Directory.Exists))
+        {
+            State = JobState.Probing;
+            paths = await Task.Run(() => ExpandFolders(paths));
+            State = media != null || Queue.Count > 0 ? JobState.Ready : JobState.Empty;
+            if (paths.Count == 0) { ErrorMessage = "No videos were found in that folder."; return; }
+        }
         if (paths.Count == 1 && !IsBatch && (media == null || IsDiscordMode)) { await LoadAsync(paths[0]); return; }
         if (tools == null) { ErrorMessage = "FFmpeg is missing, so videos cannot be opened. Please reinstall the application."; return; }
         ErrorMessage = null;
@@ -76,6 +83,16 @@ public sealed partial class MainViewModel
         if (Queue.Count == 1) { var only = Queue[0].Media; Queue.Clear(); Show(only); }
         else State = media != null || Queue.Count > 0 ? JobState.Ready : JobState.Empty;
     }
+
+    public static readonly string[] VideoExtensions =
+        [".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".flv", ".ts", ".mts", ".m2ts", ".mpg", ".mpeg", ".3gp", ".ogv"];
+
+    /// <summary>Replaces each folder with the videos in it and its subfolders, sorted by path.</summary>
+    static List<string> ExpandFolders(IEnumerable<string> paths) => paths.SelectMany<string, string>(p => Directory.Exists(p)
+        ? Directory.EnumerateFiles(p, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
+            .Where(f => VideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
+            .Order(StringComparer.OrdinalIgnoreCase)
+        : [p]).ToList();
 
     /// <summary>Removes the single loaded video, back to the empty drop area.</summary>
     public void RemoveVideo()
@@ -156,7 +173,7 @@ public sealed partial class MainViewModel
         State = JobState.Encoding;
         var results = new List<(QueueItem Item, EncodeResult Result)>();
         var failed = new List<string>();
-        int skipped = 0;
+        int skipped = 0, deletedOriginals = 0;
         bool cancelled = false;
         for (int n = 0; n < work.Count && !cancelled; n++)
         {
@@ -175,9 +192,18 @@ public sealed partial class MainViewModel
                 var r = await Task.Run(() => (job = new EncodeJob(tools!, request, item.Media, AppLog.Write)).RunAsync(progress, token));
                 results.Add((item, r));
                 item.Done = true;
-                item.Status = $"Done · {Format.Size(r.OutputBytes)} · " + (r.SavedBytes >= 0 ? $"{r.SavedPercent:0}% smaller" : "larger than the source")
+                var done = $"Done · {Format.Size(r.OutputBytes)} · " + (r.SavedBytes >= 0 ? $"{r.SavedPercent:0}% smaller" : "larger than the source")
                     + (r.FellBackToSoftware ? " · GPU failed, encoded in software" : "");
+                item.Status = done;
                 LastOutputPath = r.OutputPath;
+                if (DeleteOriginals)
+                {
+                    var check = new Progress<EncodeProgress>(p => { OnProgress(p); item.Status = $"Checking the new file · {p.Fraction * 100:0}%"; });
+                    var (deleted, note) = await Task.Run(() => DeleteOriginalAsync(item.Media, request, r, check, token));
+                    item.Status = done + " · " + note;
+                    if (deleted) deletedOriginals++;
+                    else results[^1] = (item, r with { Warnings = [.. r.Warnings, note] });
+                }
             }
             catch (OperationCanceledException) { item.Status = "Cancelled"; cancelled = true; }
             catch (Exception ex)
@@ -207,12 +233,12 @@ public sealed partial class MainViewModel
         }
         else
         {
-            ShowBatchResult(results, work.Count, failed, skipped);
+            ShowBatchResult(results, work.Count, failed, skipped, deletedOriginals);
             State = JobState.Completed;
         }
     }
 
-    void ShowBatchResult(List<(QueueItem Item, EncodeResult Result)> results, int total, List<string> failed, int skipped)
+    void ShowBatchResult(List<(QueueItem Item, EncodeResult Result)> results, int total, List<string> failed, int skipped, int deletedOriginals)
     {
         long input = results.Sum(r => r.Result.InputBytes), output = results.Sum(r => r.Result.OutputBytes);
         ResultSavedLabel = "Saved"; ResultTimeLabel = "Encoding time";
@@ -224,6 +250,45 @@ public sealed partial class MainViewModel
         ResultNotes = string.Join(Environment.NewLine,
             failed.Select(f => "• Failed: " + f)
                 .Concat(skipped > 0 ? [$"• {skipped} video(s) skipped because the output file already exists."] : [])
+                .Concat(deletedOriginals > 0 ? [$"• {deletedOriginals} original(s) passed the check and were moved to the Recycle Bin."] : [])
                 .Concat(results.SelectMany(r => r.Result.Warnings.Select(w => $"• {r.Item.Name}: {w}"))));
+    }
+
+    /// <summary>Delete originals after a verified encode (Compress mode). Deliberately not saved: off at every start.</summary>
+    public bool DeleteOriginals { get; set { field = value; Raise(nameof(DeleteOriginals)); } }
+
+    /// <summary>
+    /// Runs <see cref="OriginalCheck"/> on a finished encode and, when it passes, sends the source to the Recycle Bin
+    /// (deleted outright on drives without one, such as network shares). Cancelling the check keeps the original.
+    /// </summary>
+    async Task<(bool Deleted, string Note)> DeleteOriginalAsync(MediaInfo source, EncodeRequest request, EncodeResult r,
+        IProgress<EncodeProgress> progress, CancellationToken ct)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        string? reason;
+        try
+        {
+            reason = await OriginalCheck.VerifyAsync(tools!, source, request, r,
+                f => progress.Report(new(f, sw.Elapsed, null, null, null, null, "Checking the new file before deleting the original…")), AppLog.Write, ct);
+        }
+        catch (OperationCanceledException) { reason = "the check was cancelled"; }
+        catch (EncodeException ex) { reason = ex.Message; }
+        if (reason != null)
+        {
+            AppLog.Write($"Kept {source.Path}: {reason}.");
+            return (false, $"Original kept: {reason}.");
+        }
+        try
+        {
+            Microsoft.VisualBasic.FileIO.FileSystem.DeleteFile(source.Path,
+                Microsoft.VisualBasic.FileIO.UIOption.OnlyErrorDialogs, Microsoft.VisualBasic.FileIO.RecycleOption.SendToRecycleBin);
+            AppLog.Write($"Verified {r.OutputPath}; moved {source.Path} to the Recycle Bin.");
+            return (true, "Original moved to the Recycle Bin.");
+        }
+        catch (Exception ex)
+        {
+            AppLog.Write($"Could not delete {source.Path}: {ex}");
+            return (false, $"Original kept: it could not be deleted ({ex.Message}).");
+        }
     }
 }

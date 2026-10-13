@@ -499,10 +499,15 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         runEstimate = EstimateFor(request);
         var uncorrected = EstimateFor(request, corrected: false);
         AppLog.Write($"Encoding {request.InputPath} -> {request.OutputPath} (CRF {request.Quality.Crf}, speed {request.Quality.Speed}, {request.Encoder}, audio {(request.IncludeAudio ? "kept" : "removed")}).");
-        return RunEncodeAsync((progress, token) =>
+        var source = media!;
+        bool deleteOriginal = DeleteOriginals;
+        return RunEncodeAsync(async (progress, token) =>
         {
-            job = new EncodeJob(tools!, request, media!, AppLog.Write);
-            return job.RunAsync(progress, token);
+            job = new EncodeJob(tools!, request, source, AppLog.Write);
+            var r = await job.RunAsync(progress, token);
+            if (!deleteOriginal) return r;
+            var (_, note) = await DeleteOriginalAsync(source, request, r, progress, token);
+            return r with { Warnings = [.. r.Warnings, note] };
         }, r => { ShowResultFor(r); Learn(uncorrected, r); });
     }
 

@@ -36,7 +36,7 @@ public partial class MainWindow : Window
     async void OnLoaded(object sender, RoutedEventArgs e)
     {
         var args = Environment.GetCommandLineArgs();
-        if (args.Skip(1).Where(File.Exists).ToList() is { Count: > 0 } files) await vm.AddAsync(files);
+        if (args.Skip(1).Where(a => File.Exists(a) || Directory.Exists(a)).ToList() is { Count: > 0 } files) await vm.AddAsync(files);
         await vm.DetectHardwareAsync();
     }
 
@@ -59,9 +59,16 @@ public partial class MainWindow : Window
         {
             Title = vm.IsCompressMode ? "Choose videos" : "Choose a video",
             Multiselect = vm.IsCompressMode,
-            Filter = "Videos|*.mp4;*.m4v;*.mov;*.mkv;*.avi;*.webm;*.wmv;*.flv;*.ts;*.mts;*.m2ts;*.mpg;*.mpeg;*.3gp;*.ogv|All files|*.*",
+            Filter = "Videos|" + string.Join(";", MainViewModel.VideoExtensions.Select(x => "*" + x)) + "|All files|*.*",
         };
         if (dlg.ShowDialog(this) == true) await vm.AddAsync(dlg.FileNames);
+    }
+
+    async void OnBrowseFolder(object sender, RoutedEventArgs e)
+    {
+        if (!vm.CanEdit) return;
+        var dlg = new OpenFolderDialog { Title = "Choose folders of videos to compress (subfolders included)", Multiselect = true };
+        if (dlg.ShowDialog(this) == true) await vm.AddAsync(dlg.FolderNames);
     }
 
     void OnRemoveVideo(object sender, RoutedEventArgs e) => vm.RemoveVideo();

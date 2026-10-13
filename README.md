@@ -15,7 +15,8 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
 1. Run `AV1VideoEncoder.exe`.
 2. Drag a video onto the window (or click the drop area to browse). MP4, MOV, MKV, AVI, WebM and most other
    formats work. **Remove** clears it so you can pick a different one.
-   To compress several videos, drop or select them together, or use **Add more…**. They are encoded one after
+   To compress several videos, drop or select them together, or use **Add more…**. To compress a whole folder
+   (subfolders included), drop it or use **Choose a folder…** / **Add folder…**. They are encoded one after
    another with the same settings, each saved as `<name>_av1.mp4`. A video that fails is reported and the rest
    continue; Cancel stops the batch and keeps the videos already finished.
 3. Choose a preset. **Balanced** suits almost everything.
@@ -26,6 +27,10 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
    off they were on this PC (the median of the last 30, at most 2x either way). The data is kept in
    `%LOCALAPPDATA%\AV1 Video Encoder\estimate-history.json`; delete it to start over.
 4. Check the output folder and file name (default: next to the source, named `<name>_av1.mp4`).
+   **Delete the original after the new file passes a check** (Compress mode, off each time the app starts) removes
+   each source once its new file is at least 10% smaller, the same length, and decodes start to end without an
+   error. Originals go to the Recycle Bin, or are deleted outright on drives without one (network shares). A video
+   that fails any check keeps its original, and the result says why.
 5. Press **Start**. You can **Pause**, **Resume** or **Cancel** at any time; after a failure or cancel the
    button becomes **Retry**.
 6. When it finishes you'll see the final size, how much was saved, and **Open folder** / **Copy file** buttons
