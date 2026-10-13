@@ -15,7 +15,23 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = vm;
+        vm.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.State) && vm.State is JobState.Completed or JobState.Failed) Flash();
+        };
     }
+
+    /// <summary>Flashes the taskbar button until the window is brought forward, so a finished encode is noticed from another app.</summary>
+    void Flash()
+    {
+        if (IsActive) return;
+        var info = new FlashInfo { Size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<FlashInfo>(), Window = new System.Windows.Interop.WindowInteropHelper(this).Handle, Flags = 2 | 12 }; // tray, until foreground
+        FlashWindowEx(ref info);
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct FlashInfo { public uint Size; public IntPtr Window; public uint Flags, Count, Timeout; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool FlashWindowEx(ref FlashInfo info);
 
     async void OnLoaded(object sender, RoutedEventArgs e)
     {
@@ -81,6 +97,9 @@ public partial class MainWindow : Window
             overwrite = true;
         }
 
+        if (vm.NotWorthItWarning() is { } warning &&
+            MessageBox.Show(this, warning + "\n\nEncode anyway?", "Little saving expected", MessageBoxButton.YesNo, MessageBoxImage.Information, MessageBoxResult.No) != MessageBoxResult.Yes) return;
+
         var request = vm.IsDiscordMode ? null : vm.BuildRequest(output, overwrite);
         long needed = request != null ? vm.RequiredBytes(request) ?? 0 : vm.DiscordRequiredBytes;
         if (Engine.EncodeJob.AvailableBytes(output) is long free && free < needed)
@@ -105,6 +124,19 @@ public partial class MainWindow : Window
     async Task StartBatch()
     {
         if (vm.BatchOutputs() is not { } work) return;
+        // Batches have no size estimate, so the codec is the hint: AV1 sources barely shrink.
+        if (work.Where(w => w.Item.Media.Video?.Codec == "av1").ToList() is { Count: > 0 } av1)
+        {
+            var answer = MessageBox.Show(this, $"{av1.Count} of these videos are already AV1, so re-encoding them will likely save little and lose some quality.\n\nSkip them?",
+                "Already AV1", MessageBoxButton.YesNoCancel, MessageBoxImage.Information, MessageBoxResult.Yes);
+            if (answer == MessageBoxResult.Cancel) return;
+            if (answer == MessageBoxResult.Yes)
+            {
+                foreach (var w in av1) w.Item.Status = "Skipped: already AV1";
+                work = work.Except(av1).ToList();
+                if (work.Count == 0) return;
+            }
+        }
         int existing = work.Count(w => File.Exists(w.Request.OutputPath));
         bool overwrite = false;
         if (existing > 0)
@@ -137,6 +169,11 @@ public partial class MainWindow : Window
             Process.Start("explorer.exe", ["/select,", p]);
         else if (Directory.Exists(vm.OutputFolder))
             Process.Start("explorer.exe", [vm.OutputFolder]);
+    }
+
+    void OnCopyFile(object sender, RoutedEventArgs e)
+    {
+        if (vm.LastOutputPath is { } p && File.Exists(p)) MainViewModel.CopyToClipboard(p);
     }
 
     void OnShowLog(object sender, RoutedEventArgs e) => LogWindow.ShowSingle(this);

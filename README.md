@@ -28,7 +28,11 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
 4. Check the output folder and file name (default: next to the source, named `<name>_av1.mp4`).
 5. Press **Start**. You can **Pause**, **Resume** or **Cancel** at any time; after a failure or cancel the
    button becomes **Retry**.
-6. When it finishes you'll see the final size, how much was saved, and an **Open folder** button.
+6. When it finishes you'll see the final size, how much was saved, and **Open folder** / **Copy file** buttons
+   (Copy file puts the video on the clipboard, ready to paste into Discord or a folder; Video to Discord mode copies
+   it automatically). The taskbar button shows progress and flashes when the encode ends.
+   If the estimate says the output would be about as big as the source (or a batch contains AV1 videos), the app asks
+   before encoding, since there is little to gain.
 
 **Advanced options** (in the Quality card):
 - *Custom quality*: CRF 10-60 (lower = better quality, bigger file) and encoder speed 2-12 (lower = slower,

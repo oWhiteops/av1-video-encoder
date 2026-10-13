@@ -35,6 +35,7 @@ public sealed partial class MainViewModel
         $"{Format.Duration(TimeSpan.FromSeconds(Queue.Sum(q => q.Media.Duration.TotalSeconds)))} in total";
 
     string batchPrefix = "";
+    int batchIndex, batchCount;
 
     void OnQueueChanged() => Raise(nameof(IsBatch), nameof(IsSingle), nameof(HasMedia), nameof(ShowSingle), nameof(ShowDiscordBatchNote),
         nameof(BatchSummary), nameof(CanStart), nameof(StatusText));
@@ -163,6 +164,7 @@ public sealed partial class MainViewModel
             if (File.Exists(request.OutputPath) && !overwrite) { item.Status = "Skipped: the output file already exists"; skipped++; continue; }
             request = request with { OverwriteExisting = overwrite };
             batchPrefix = $"Video {n + 1} of {work.Count}: ";
+            (batchIndex, batchCount) = (n, work.Count);
             runRequest = null; runEstimate = null; // no per-video estimate in a batch
             ResetProgress();
             item.Status = "Encoding…";
@@ -188,6 +190,7 @@ public sealed partial class MainViewModel
             finally { job = null; }
         }
         batchPrefix = "";
+        (batchIndex, batchCount) = (0, 0);
         cts.Dispose();
         cts = null;
 

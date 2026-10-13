@@ -405,6 +405,15 @@ public sealed partial class MainViewModel
         ResultSaved = string.Join(", ", changes);
         ResultTime = $"{Format.Duration(r.Output.Duration)} video · encoded in {Format.Duration(r.EncodeTime)}" + (r.Attempts > 1 ? $" · {r.Attempts} attempts" : "");
         // The engine already reports dropped or converted streams; only the planner's HDR note adds something.
-        ResultNotes = string.Join(Environment.NewLine, r.Warnings.Concat(p.Warnings.Where(w => w.Contains("HDR"))).Select(w => "• " + w));
+        var notes = r.Warnings.Concat(p.Warnings.Where(w => w.Contains("HDR"))).Select(w => "• " + w).ToList();
+        if (CopyToClipboard(r.OutputPath)) notes.Insert(0, "• Copied to the clipboard: paste it into a Discord chat with Ctrl+V.");
+        ResultNotes = string.Join(Environment.NewLine, notes);
+    }
+
+    /// <summary>Puts the file on the clipboard the way Explorer's Copy does, so it pastes into Discord as an upload.</summary>
+    public static bool CopyToClipboard(string path)
+    {
+        try { System.Windows.Clipboard.SetFileDropList([path]); return true; }
+        catch (Exception ex) { AppLog.Write("Could not copy the file to the clipboard: " + ex.Message); return false; } // clipboard held by another app
     }
 }

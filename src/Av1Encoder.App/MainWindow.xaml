@@ -4,6 +4,9 @@
         Title="AV1 Video Encoder" Width="800" Height="920" MinWidth="640" MinHeight="620"
         WindowStartupLocation="CenterScreen" AllowDrop="True" DragOver="OnDragOver" Drop="OnDrop"
         Closing="OnClosing" Loaded="OnLoaded">
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo ProgressValue="{Binding TaskbarProgress, Mode=OneWay}" ProgressState="{Binding TaskbarState, Mode=OneWay}" />
+    </Window.TaskbarItemInfo>
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="Vis" />
 
@@ -245,6 +248,8 @@
                             <TextBlock DockPanel.Dock="Left" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" Text="&#xE930;" FontSize="20"
                                        Foreground="{DynamicResource SystemFillColorSuccessBrush}" Margin="0,0,10,0" VerticalAlignment="Center" />
                             <Button DockPanel.Dock="Right" Content="Open folder" Click="OnOpenFolder" Style="{DynamicResource AccentButtonStyle}" />
+                            <Button DockPanel.Dock="Right" Content="Copy file" Click="OnCopyFile" Margin="0,0,8,0"
+                                    ToolTip="Copy the encoded file to the clipboard, to paste into Discord, an email or a folder" />
                             <TextBlock Text="Encoding complete" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
                         </DockPanel>
                         <UniformGrid Columns="3">

@@ -63,7 +63,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         {
             Set(ref state, value);
             Raise(nameof(HasMedia), nameof(ShowSingle), nameof(IsBusy), nameof(CanEdit), nameof(CanStart), nameof(ShowProgress), nameof(ShowResult),
-                nameof(StartLabel), nameof(PauseLabel), nameof(StatusText), nameof(IsPaused));
+                nameof(StartLabel), nameof(PauseLabel), nameof(StatusText), nameof(IsPaused), nameof(TaskbarState));
         }
     }
 
@@ -293,6 +293,26 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
         return Learned(complexity == null ? null : EncodeEstimator.Estimate(media!, request, complexity));
     }
 
+    /// <summary>
+    /// A warning when compressing will likely save little or nothing: the estimate is close to the source size, or,
+    /// without an estimate, the source is already AV1. Null when it looks worthwhile. Compress mode only.
+    /// </summary>
+    public string? NotWorthItWarning()
+    {
+        if (IsDiscordMode || media == null || CurrentRequest() is not { } request) return null;
+        if (EstimateFor(request) is { } e)
+        {
+            double expected = (e.MinBytes + e.MaxBytes) / 2.0;
+            return expected < media.SizeBytes * WorthItRatio ? null
+                : $"This video is already efficiently compressed: the output is estimated at {Format.SizeRange(e.MinBytes, e.MaxBytes)}, " +
+                  $"about the same as or more than the source ({Format.Size(media.SizeBytes)}).";
+        }
+        return media.Video?.Codec == "av1" ? "This video is already AV1, so re-encoding it will likely save little and lose some quality." : null;
+    }
+
+    /// <summary>Below 90% of the source, compressing is worth it.</summary>
+    const double WorthItRatio = 0.9;
+
     /// <summary>Records how a finished encode compared with its uncorrected estimate, so later estimates learn from it.</summary>
     void Learn(EncodeEstimate? uncorrected, EncodeResult r)
     {
@@ -322,6 +342,8 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
             string prefix = gpu && hwError != null
                 ? "The GPU encoder can't encode this video, so it would fall back to slower software encoding. "
                 : "";
+            if (!IsDiscordMode && (e.MinBytes + e.MaxBytes) / 2.0 >= media.SizeBytes * WorthItRatio)
+                prefix += "Little or no saving expected: this video is already efficiently compressed. ";
             // Discord mode already shows its expected size next to the limit.
             return prefix + (IsDiscordMode ? $"Estimated {time}." : $"Estimated output ≈ {Format.SizeRange(e.MinBytes, e.MaxBytes)} · {time}.");
         }
@@ -376,7 +398,17 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
     // ---------- Progress & result ----------
 
     double percent;
-    public double Percent { get => percent; private set => Set(ref percent, value); }
+    public double Percent { get => percent; private set { Set(ref percent, value); Raise(nameof(TaskbarProgress)); } }
+
+    /// <summary>Taskbar button progress (0-1), across the whole batch when one is running.</summary>
+    public double TaskbarProgress => batchCount > 0 ? (batchIndex + Percent / 100) / batchCount : Percent / 100;
+    public System.Windows.Shell.TaskbarItemProgressState TaskbarState => State switch
+    {
+        JobState.Encoding => System.Windows.Shell.TaskbarItemProgressState.Normal,
+        JobState.Paused => System.Windows.Shell.TaskbarItemProgressState.Paused,
+        JobState.Failed => System.Windows.Shell.TaskbarItemProgressState.Error,
+        _ => System.Windows.Shell.TaskbarItemProgressState.None,
+    };
     string stage = "";
     public string Stage { get => stage; private set { Set(ref stage, value); Raise(nameof(StatusText)); } }
     string percentText = "", elapsedText = "", remainingText = "", speedText = "", estimateText = "";
