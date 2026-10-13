@@ -103,11 +103,11 @@ public sealed partial class MainViewModel
     public static readonly string[] VideoExtensions =
         [".mp4", ".m4v", ".mov", ".mkv", ".avi", ".webm", ".wmv", ".flv", ".ts", ".mts", ".m2ts", ".mpg", ".mpeg", ".3gp", ".ogv"];
 
-    /// <summary>Replaces each folder with the videos in it and its subfolders, sorted by path.</summary>
+    /// <summary>Replaces each folder with the videos in it and its subfolders, sorted by file name (episode order across season folders).</summary>
     static List<string> ExpandFolders(IEnumerable<string> paths) => paths.SelectMany<string, string>(p => Directory.Exists(p)
         ? Directory.EnumerateFiles(p, "*", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true })
             .Where(f => VideoExtensions.Contains(Path.GetExtension(f), StringComparer.OrdinalIgnoreCase))
-            .Order(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(Path.GetFileName, StringComparer.OrdinalIgnoreCase).ThenBy(f => f, StringComparer.OrdinalIgnoreCase)
         : [p]).ToList();
 
     /// <summary>Removes the single loaded video, back to the empty drop area.</summary>
@@ -445,9 +445,9 @@ public sealed partial class MainViewModel
                 : q.CheckFailed ? "No estimate: the quality check failed on this video." : "";
         }
 
-        var known = Queue.Where(q => q.Estimate != null).ToList();
         long totalBytes = Queue.Sum(q => q.Media.SizeBytes);
-        if (known.Count == 0)
+        var known = Queue.Where(q => q.Estimate != null).ToList();
+        if (BatchTotals(q => q.Estimate) is not var (min, max, minTime, maxTime, _))
         {
             BatchEstimate = batchChecking ? "Estimating the size and time of each video…"
                 : SkipQualityAnalysis ? "Size and time estimates need the quality check, which is turned off." : "";
@@ -455,14 +455,7 @@ public sealed partial class MainViewModel
         }
         else
         {
-            // Videos not checked yet are assumed to compress like the checked ones (by size) and encode at the same pace (by length).
-            long knownBytes = known.Sum(q => q.Media.SizeBytes);
-            double sizeScale = (double)totalBytes / Math.Max(knownBytes, 1);
-            double timeScale = Queue.Sum(q => q.Media.Duration.TotalSeconds) / Math.Max(known.Sum(q => q.Media.Duration.TotalSeconds), 1);
-            long min = (long)(known.Sum(q => q.Estimate!.MinBytes) * sizeScale), max = (long)(known.Sum(q => q.Estimate!.MaxBytes) * sizeScale);
-            string time = known.All(q => q.Estimate!.MinTime != null)
-                ? $" · encoding ≈ {Format.TimeRange(TimeSpan.FromTicks(known.Sum(q => q.Estimate!.MinTime!.Value.Ticks)) * timeScale, TimeSpan.FromTicks(known.Sum(q => q.Estimate!.MaxTime!.Value.Ticks)) * timeScale)} on this PC"
-                : "";
+            string time = minTime is { } lo && maxTime is { } hi ? $" · encoding ≈ {Format.TimeRange(lo, hi)} on this PC" : "";
             BatchEstimate = $"Estimated after compression: {Format.SizeRange(min, max)} (now {Format.Size(totalBytes)}){time}";
             double percent = 100.0 * (totalBytes - (min + max) / 2.0) / Math.Max(totalBytes, 1);
             BatchSaving = (totalBytes - max > 0
@@ -474,6 +467,35 @@ public sealed partial class MainViewModel
         }
         Raise(nameof(IsBatchChecking), nameof(BatchCheckStatus), nameof(BatchCheckPercent), nameof(BatchEstimate), nameof(BatchSaving),
             nameof(LowSavingNote), nameof(HasLowSaving));
+    }
+
+    /// <summary>
+    /// Batch totals from per-video estimates. Videos without one yet are assumed to compress like the estimated ones
+    /// (by size) and encode at the same pace (by length). Null when no video has an estimate.
+    /// </summary>
+    (long Min, long Max, TimeSpan? MinTime, TimeSpan? MaxTime, int Known)? BatchTotals(Func<QueueItem, EncodeEstimate?> estimate)
+    {
+        var known = Queue.Select(q => (q.Media, Estimate: estimate(q))).Where(k => k.Estimate != null).ToList();
+        if (known.Count == 0) return null;
+        double sizeScale = (double)Queue.Sum(q => q.Media.SizeBytes) / Math.Max(known.Sum(k => k.Media.SizeBytes), 1);
+        double timeScale = Queue.Sum(q => q.Media.Duration.TotalSeconds) / Math.Max(known.Sum(k => k.Media.Duration.TotalSeconds), 1);
+        bool timed = known.All(k => k.Estimate!.MinTime != null && k.Estimate.MaxTime != null);
+        TimeSpan Sum(Func<EncodeEstimate, TimeSpan> f) => TimeSpan.FromTicks(known.Sum(k => f(k.Estimate!).Ticks)) * timeScale;
+        return ((long)(known.Sum(k => k.Estimate!.MinBytes) * sizeScale), (long)(known.Sum(k => k.Estimate!.MaxBytes) * sizeScale),
+            timed ? Sum(e => e.MinTime!.Value) : null, timed ? Sum(e => e.MaxTime!.Value) : null, known.Count);
+    }
+
+    /// <summary>A preset card's batch total, so presets can be compared for the whole batch.</summary>
+    string BatchPresetEstimate(QualityPreset preset)
+    {
+        var quality = settings.QualityFor(preset);
+        var totals = BatchTotals(q =>
+        {
+            var r = BatchRequest(q) with { Quality = quality };
+            return EstimateFor(q.Media, r, q.Check, q.GpuSamples.GetValueOrDefault((r.Encoder, r.Quality)), q.GpuFailed.Contains(r.Encoder));
+        });
+        if (totals is not var (min, max, lo, hi, _)) return batchChecking ? "Estimating…" : "";
+        return $"≈ {Format.SizeRange(min, max)} in total" + (lo is { } a && hi is { } b ? $" · {Format.TimeRange(a, b)}" : "");
     }
 
     bool IsLowSaving(MediaInfo m, EncodeEstimate e) => (e.MinBytes + e.MaxBytes) / 2.0 >= m.SizeBytes * WorthItRatio;

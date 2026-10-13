@@ -83,6 +83,8 @@ Switch to **Video to Discord** at the top of the window to fit a video under an 
 Only the main audio track is kept (downmixed to stereo when it has more channels); the app lists any tracks it
 leaves out. HDR videos get a warning: colours may look washed out on most screens.
 
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each version.
+
 ## Building
 
 Requirements: Windows 10/11 x64, the [.NET 10 SDK](https://dot.net), internet access for the first build

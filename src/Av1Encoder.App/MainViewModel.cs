@@ -384,6 +384,7 @@ public sealed partial class MainViewModel : INotifyPropertyChanged
 
     string PresetEstimate(QualityPreset preset)
     {
+        if (IsBatch && !IsDiscordMode) return BatchPresetEstimate(preset);
         if (IsDiscordMode || media?.Video == null || tools == null || CurrentRequest() is not { } request) return "";
         request = request with { Quality = settings.QualityFor(preset) };
         if (EstimateFor(request) is not { } e)

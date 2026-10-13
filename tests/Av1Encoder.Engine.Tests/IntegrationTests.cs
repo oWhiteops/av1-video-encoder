@@ -93,6 +93,24 @@ public class IntegrationTests(Samples s)
         Assert.Empty(Directory.Exists(dir) ? Directory.GetFiles(dir, "*.partial") : []);
 
     [Fact]
+    public async Task OriginalCheckPassesAGoodEncodeAndCatchesADamagedOne()
+    {
+        var input = s.Get("medium.mkv", "-f", "lavfi", "-i", "testsrc2=s=1280x720:r=30:d=8", "-c:v", "ffv1");
+        var media = await MediaProbe.ProbeAsync(s.Tools, input);
+        var (result, _) = await Encode(input);
+        var request = new EncodeRequest { InputPath = input, OutputPath = result.OutputPath, Quality = Fast };
+        double last = 0;
+        Assert.Null(await OriginalCheck.VerifyAsync(s.Tools, media, request, result, p => last = p, null, CancellationToken.None));
+        Assert.True(last > 0.9, $"decode progress ended at {last:0.00}");
+
+        // Same length, scrambled middle: only the full decode can tell.
+        var bytes = File.ReadAllBytes(result.OutputPath);
+        for (int i = bytes.Length / 3; i < bytes.Length * 2 / 3; i += 2048) Array.Fill(bytes, (byte)0xFF, i, 64);
+        File.WriteAllBytes(result.OutputPath, bytes);
+        Assert.Contains("decode", await OriginalCheck.VerifyAsync(s.Tools, media, request, result, null, null, CancellationToken.None));
+    }
+
+    [Fact]
     public async Task EncodesAv1WithAudioPreservingGeometryAndFrameRate()
     {
         var (result, progress) = await Encode(s.Basic);

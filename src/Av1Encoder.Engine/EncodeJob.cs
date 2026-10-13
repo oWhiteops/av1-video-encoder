@@ -112,7 +112,7 @@ public sealed class EncodeJob(FfmpegTools tools, EncodeRequest request, MediaInf
         string temp = TempPathFor(Request.OutputPath);
         string passLog = temp[..^".partial".Length] + ".passlog"; // FFmpeg appends "-0.log"; the preflight sweep matches it
         string stage = fallback ? "Encoding in software (GPU encoder failed)"
-            : encoder == VideoEncoder.SvtAv1 ? "Encoding (SVT-AV1)" : $"Encoding ({encoder} hardware)";
+            : encoder == VideoEncoder.SvtAv1 ? "Encoding (SVT-AV1)" : $"Encoding on the GPU ({HardwareDetector.DisplayName(encoder)})";
         // Two-pass needs a bitrate target and only SVT-AV1 supports it here; pass 1 only analyses, so it writes no file.
         bool twoPass = Request.TwoPass && encoder == VideoEncoder.SvtAv1 && Request.Quality.VideoBitrateKbps != null;
         double firstShare = twoPass ? Pass1Share(Request.Quality.Speed) : 0;

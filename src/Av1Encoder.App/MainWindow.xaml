@@ -411,21 +411,21 @@
                     <StackPanel>
                         <TextBlock Text="Quality" Style="{StaticResource CardTitle}" />
                         <UniformGrid Columns="3" Margin="0,0,-8,0">
-                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsHighQuality}">
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsHighQuality}" AutomationProperties.Name="High Quality">
                                 <StackPanel>
                                     <TextBlock Text="High Quality" FontWeight="SemiBold" />
                                     <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Near-transparent quality. Slower to encode." />
                                     <TextBlock Text="{Binding HighQualityEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsBalanced}">
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsBalanced}" AutomationProperties.Name="Balanced">
                                 <StackPanel>
                                     <TextBlock Text="Balanced (recommended)" FontWeight="SemiBold" />
                                     <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Looks great, much smaller, reasonable speed." />
                                     <TextBlock Text="{Binding BalancedEstimate}" FontWeight="SemiBold" Margin="0,6,0,0" TextWrapping="Wrap" />
                                 </StackPanel>
                             </RadioButton>
-                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsSmallest}">
+                            <RadioButton Style="{StaticResource PresetCard}" GroupName="Preset" IsChecked="{Binding IsSmallest}" AutomationProperties.Name="Smallest File">
                                 <StackPanel>
                                     <TextBlock Text="Smallest File" FontWeight="SemiBold" />
                                     <TextBlock Style="{StaticResource StatLabel}" Margin="0,4,0,0" Text="Maximum savings, still clear. Some detail loss." />
