@@ -10,6 +10,18 @@ quality preset, press Start. Everything runs locally: no accounts, no cloud, no 
 - Safe: writes to a temporary file, verifies the result with FFprobe, and only then saves it. It never
   overwrites a file without asking, and cancelled or failed encodes leave nothing behind.
 
+## Download
+
+**[⬇ Download the latest version for Windows (.zip)](https://github.com/oWhiteops/av1-video-encoder/releases/latest/download/AV1VideoEncoder-win-x64.zip)**
+
+1. Download the zip and extract it (right-click → **Extract All…**). Keep all the files together.
+2. Open the extracted folder and run **AV1VideoEncoder.exe**. Nothing to install; Windows 10 or 11 (64-bit).
+3. If Windows shows *"Windows protected your PC"*, click **More info** → **Run anyway**. This appears because the
+   app isn't code-signed.
+
+Older versions and what changed in each are on the [Releases](https://github.com/oWhiteops/av1-video-encoder/releases)
+page and in [CHANGELOG.md](CHANGELOG.md).
+
 ## Using it
 
 1. Run `AV1VideoEncoder.exe`.
@@ -97,6 +109,14 @@ scripts\build.ps1 -SkipTests # same without tests
 
 The self-contained build (no .NET install needed on the target PC) lands in
 `artifacts\AV1VideoEncoder-<version>-win-x64\` with a matching `.zip`.
+
+To publish it, create a GitHub release and attach the zip as `AV1VideoEncoder-win-x64.zip` (no version in the
+name), so the Download link above always points to the newest release:
+
+```powershell
+copy artifacts\AV1VideoEncoder-<version>-win-x64.zip AV1VideoEncoder-win-x64.zip
+gh release create v<version> AV1VideoEncoder-win-x64.zip --title "<version>" --notes "See CHANGELOG.md"
+```
 
 Individual steps:
 
